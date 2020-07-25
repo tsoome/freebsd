@@ -214,6 +214,16 @@ loader_main(struct loader_callbacks *cb, void *arg, int version, int ndisks)
 	exit(0);
 }
 
+static void
+set_currdev(const char *devname)
+{
+
+	env_setenv("currdev", EV_VOLATILE, devname,
+	    userboot_setcurrdev, env_nounset);
+	env_setenv("loaddev", EV_VOLATILE, devname,
+	    env_noset, env_nounset);
+}
+
 /*
  * Set the 'current device' by (if possible) recovering the boot device as 
  * supplied by the initial bootstrap.
@@ -225,6 +235,7 @@ extract_currdev(void)
 	struct devdesc *dd;
 #if defined(USERBOOT_ZFS_SUPPORT)
 	struct zfs_devdesc zdev;
+	char *buf = NULL;
 
 	if (userboot_zfs_found) {
 	
@@ -257,10 +268,22 @@ extract_currdev(void)
 		dd = &dev.dd;
 	}
 
-	env_setenv("currdev", EV_VOLATILE, userboot_fmtdev(dd),
-	    userboot_setcurrdev, env_nounset);
-	env_setenv("loaddev", EV_VOLATILE, userboot_fmtdev(dd),
-	    env_noset, env_nounset);
+	set_currdev(userboot_fmtdev(dd));
+
+#if defined(USERBOOT_ZFS_SUPPORT)
+	if (userboot_zfs_found) {
+		buf = malloc(VDEV_PAD_SIZE);
+		if (buf != NULL) {
+			if (zfs_get_bootonce(&zdev, "command", buf,
+			    VDEV_PAD_SIZE) == 0) {
+				printf("zfs bootonce: %s\n", buf);
+				set_currdev(buf);
+				setenv("zfs-bootonce", buf, 1);
+			}
+			free(buf);
+		}
+	}
+#endif
 }
 
 #if defined(USERBOOT_ZFS_SUPPORT)

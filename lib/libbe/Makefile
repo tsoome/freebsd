@@ -17,7 +17,9 @@ IGNORE_PRAGMA=	yes
 
 LIBADD+= zfs
 LIBADD+= nvpair
+LIBADD+= zfsbootenv
 
+CFLAGS+= -I${SRCTOP}/lib/libzfsbootenv
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzfs/common
 CFLAGS+= -I${SRCTOP}/sys/cddl/compat/opensolaris
 CFLAGS+= -I${SRCTOP}/cddl/compat/opensolaris/include

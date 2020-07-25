@@ -165,6 +165,7 @@ LIBYPCLNT?=	${LIBDESTDIR}${LIBDIR_BASE}/libypclnt.a
 LIBZ?=		${LIBDESTDIR}${LIBDIR_BASE}/libz.a
 LIBZFS?=	${LIBDESTDIR}${LIBDIR_BASE}/libzfs.a
 LIBZFS_CORE?=	${LIBDESTDIR}${LIBDIR_BASE}/libzfs_core.a
+LIBZFSBOOTENV?=	${LIBDESTDIR}${LIBDIR_BASE}/libzfsbootenv.a
 LIBZPOOL?=	${LIBDESTDIR}${LIBDIR_BASE}/libzpool.a
 
 # enforce the 2 -lpthread and -lc to always be the last in that exact order

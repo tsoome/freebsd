@@ -27,6 +27,7 @@ SRCS=	autoload.c \
 CFLAGS+=	-I${.CURDIR}/../loader
 .if ${MK_LOADER_ZFS} != "no"
 CFLAGS+=	-I${ZFSSRC}
+CFLAGS+=        -I${SYSDIR}/cddl/contrib/opensolaris/uts/common/fs/zfs
 CFLAGS+=	-DEFI_ZFS_BOOT
 HAVE_ZFS=	yes
 .endif

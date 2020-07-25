@@ -28,128 +28,234 @@ __FBSDID("$FreeBSD$");
 
 #include <stand.h>
 #include <sys/endian.h>
+#include <sys/stdint.h>
 #include <zfsimpl.h>
 #include "libzfs.h"
 
+enum xdr_op {
+	XDR_OP_ENCODE = 1,
+	XDR_OP_DECODE = 2
+};
+
 typedef struct xdr {
-	int (*xdr_getint)(const struct xdr *, const void *, int *);
+	enum xdr_op xdr_op;
+	int (*xdr_getint)(const void *, int *);
+	int (*xdr_putint)(void *, int);
+	int (*xdr_getuint)(const void *, unsigned *);
+	int (*xdr_putuint)(void *, unsigned);
 } xdr_t;
 
-static int xdr_int(const xdr_t *, const void *, int *);
-static int mem_int(const xdr_t *, const void *, int *);
-static void nvlist_decode_nvlist(const xdr_t *, nvlist_t *);
+static int nvlist_xdr_nvlist(const xdr_t *, nvlist_t *);
 static int nvlist_size(const xdr_t *, const uint8_t *);
+static int xdr_int(const xdr_t *, void *, int *);
+static int xdr_u_int(const xdr_t *, void *, unsigned *);
 
-/*
- * transform data from network to host.
- */
-xdr_t ntoh = {
-	.xdr_getint = xdr_int
-};
-
-/*
- * transform data from host to host.
- */
-xdr_t native = {
-	.xdr_getint = mem_int
-};
-
-/*
- * transform data from host to network.
- */
-xdr_t hton = {
-	.xdr_getint = xdr_int
-};
-
+/* Basic primitives for XDR translation operations, getint and putint. */
 static int
-xdr_short(const xdr_t *xdr, const uint8_t *buf, short *ip)
-{
-	int i, rv;
-
-	rv = xdr->xdr_getint(xdr, buf, &i);
-	*ip = i;
-	return (rv);
-}
-
-static int
-xdr_u_short(const xdr_t *xdr, const uint8_t *buf, unsigned short *ip)
-{
-	unsigned u;
-	int rv;
-
-	rv = xdr->xdr_getint(xdr, buf, &u);
-	*ip = u;
-	return (rv);
-}
-
-static int
-xdr_int(const xdr_t *xdr __unused, const void *buf, int *ip)
+_getint(const void *buf, int *ip)
 {
 	*ip = be32dec(buf);
 	return (sizeof(int));
 }
 
 static int
-xdr_u_int(const xdr_t *xdr __unused, const void *buf, unsigned *ip)
+_putint(void *buf, int i)
+{
+	int *ip = buf;
+
+	*ip = htobe32(i);
+	return (sizeof(int));
+}
+
+static int
+_getuint(const void *buf, unsigned *ip)
 {
 	*ip = be32dec(buf);
 	return (sizeof(unsigned));
 }
 
 static int
-xdr_string(const xdr_t *xdr, const void *buf, nv_string_t *s)
+_putuint(void *buf, unsigned i)
 {
-	int size;
+	unsigned *up = buf;
 
-	size = xdr->xdr_getint(xdr, buf, &s->nv_size);
-	size = NV_ALIGN4(size + s->nv_size);
-	return (size);
-}
-
-static int
-xdr_int64(const xdr_t *xdr, const uint8_t *buf, int64_t *lp)
-{
-	int hi, rv;
-	unsigned lo;
-
-	rv = xdr->xdr_getint(xdr, buf, &hi);
-	rv += xdr->xdr_getint(xdr, buf + rv, &lo);
-	*lp = (((int64_t)hi) << 32) | lo;
-	return (rv);
-}
-
-static int
-xdr_uint64(const xdr_t *xdr, const uint8_t *buf, uint64_t *lp)
-{
-	unsigned hi, lo;
-	int rv;
-
-	rv = xdr->xdr_getint(xdr, buf, &hi);
-	rv += xdr->xdr_getint(xdr, buf + rv, &lo);
-	*lp = (((int64_t)hi) << 32) | lo;
-	return (rv);
-}
-
-static int
-xdr_char(const xdr_t *xdr, const uint8_t *buf, char *cp)
-{
-	int i, rv;
-
-	rv = xdr->xdr_getint(xdr, buf, &i);
-	*cp = i;
-	return (rv);
+	*up = htobe32(i);
+	return (sizeof(int));
 }
 
 /*
- * read native data.
+ * read native data without translation.
  */
 static int
-mem_int(const xdr_t *xdr, const void *buf, int *i)
+mem_int(const void *buf, int *i)
 {
 	*i = *(int *)buf;
 	return (sizeof(int));
 }
 
+static int
+mem_uint(const void *buf, unsigned *u)
+{
+	*u = *(int *)buf;
+	return (sizeof(int));
+}
+
+/*
+ * XDR data translations.
+ */
+static int
+xdr_short(const xdr_t *xdr, uint8_t *buf, short *ip)
+{
+	int i, rv = 0;
+
+	i = *ip;
+	rv = xdr_int(xdr, buf, &i);
+	if (xdr->xdr_op == XDR_OP_DECODE) {
+		*ip = i;
+	}
+	return (rv);
+}
+
+static int
+xdr_u_short(const xdr_t *xdr, uint8_t *buf, unsigned short *ip)
+{
+	unsigned u;
+	int rv;
+
+	u = *ip;
+	rv = xdr_u_int(xdr, buf, &u);
+	if (xdr->xdr_op == XDR_OP_DECODE) {
+		*ip = u;
+	}
+	return (rv);
+}
+
+static int
+xdr_int(const xdr_t *xdr, void *buf, int *ip)
+{
+	int rv = 0;
+	int *i = buf;
+
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		/* Encode value *ip, store to buf */
+		rv = xdr->xdr_putint(buf, *ip);
+		break;
+
+	case XDR_OP_DECODE:
+		/* Decode buf, return value to *ip */
+		rv = xdr->xdr_getint(buf, i);
+		*ip = *i;
+		break;
+	}
+	return (rv);
+}
+
+static int
+xdr_u_int(const xdr_t *xdr, void *buf, unsigned *ip)
+{
+	int rv = 0;
+	unsigned *u = buf;
+
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		/* Encode value *ip, store to buf */
+		rv = xdr->xdr_putuint(buf, *ip);
+		break;
+
+	case XDR_OP_DECODE:
+		/* Decode buf, return value to *ip */
+		rv = xdr->xdr_getuint(buf, u);
+		*ip = *u;
+		break;
+	}
+	return (rv);
+}
+
+static int
+xdr_string(const xdr_t *xdr, const void *buf, nv_string_t *s)
+{
+	int size = 0;
+
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		size = s->nv_size;
+		size += xdr->xdr_putuint(&s->nv_size, s->nv_size);
+		size = NV_ALIGN4(size);
+		break;
+
+	case XDR_OP_DECODE:
+		size = xdr->xdr_getuint(buf, &s->nv_size);
+		size = NV_ALIGN4(size + s->nv_size);
+		break;
+	}
+	return (size);
+}
+
+static int
+xdr_int64(const xdr_t *xdr, uint8_t *buf, int64_t *lp)
+{
+	int hi, rv = 0;
+	unsigned lo;
+
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		/* Encode value *lp, store to buf */
+		hi = *lp >> 32;
+		lo = *lp & UINT32_MAX;
+		rv = xdr->xdr_putint(buf, hi);
+		rv += xdr->xdr_putint(buf + rv, lo);
+		break;
+
+	case XDR_OP_DECODE:
+		/* Decode buf, return value to *ip */
+		rv = xdr->xdr_getint(buf, &hi);
+		rv += xdr->xdr_getuint(buf + rv, &lo);
+		*lp = (((int64_t)hi) << 32) | lo;
+	}
+	return (rv);
+}
+
+static int
+xdr_uint64(const xdr_t *xdr, uint8_t *buf, uint64_t *lp)
+{
+	unsigned hi, lo;
+	int rv = 0;
+
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		/* Encode value *ip, store to buf */
+		hi = *lp >> 32;
+		lo = *lp & UINT32_MAX;
+		rv = xdr->xdr_putint(buf, hi);
+		rv += xdr->xdr_putint(buf + rv, lo);
+		break;
+
+	case XDR_OP_DECODE:
+		/* Decode buf, return value to *ip */
+		rv = xdr->xdr_getuint(buf, &hi);
+		rv += xdr->xdr_getuint(buf + rv, &lo);
+		*lp = (((uint64_t)hi) << 32) | lo;
+	}
+	return (rv);
+}
+
+static int
+xdr_char(const xdr_t *xdr, uint8_t *buf, char *cp)
+{
+	int i, rv = 0;
+
+	i = *cp;
+	rv = xdr_int(xdr, buf, &i);
+	if (xdr->xdr_op == XDR_OP_DECODE) {
+		*cp = i;
+	}
+	return (rv);
+}
+
+/*
+ * nvlist management functions.
+ */
 void
 nvlist_destroy(nvlist_t *nvl)
 {
@@ -205,30 +311,42 @@ nvlist_create(int flag)
 	return (nvl);
 }
 
-static void
-nvlist_nvp_decode(const xdr_t *xdr, nvlist_t *nvl, nvp_header_t *nvph)
+static int
+nvlist_xdr_nvp(const xdr_t *xdr, nvlist_t *nvl)
 {
 	nv_string_t *nv_string;
 	nv_pair_data_t *nvp_data;
 	nvlist_t nvlist;
+	unsigned type, nelem;
+	xdr_t xdrmem = {
+	    .xdr_op = XDR_OP_DECODE,
+	    .xdr_getint = mem_int,
+	    .xdr_getuint = mem_uint
+	};
 
 	nv_string = (nv_string_t *)nvl->nv_idx;
 	nvl->nv_idx += xdr_string(xdr, &nv_string->nv_size, nv_string);
 	nvp_data = (nv_pair_data_t *)nvl->nv_idx;
 
-	nvl->nv_idx += xdr_u_int(xdr, &nvp_data->nv_type, &nvp_data->nv_type);
-	nvl->nv_idx += xdr_u_int(xdr, &nvp_data->nv_nelem, &nvp_data->nv_nelem);
+	type = nvp_data->nv_type;
+	nelem = nvp_data->nv_nelem;
+	nvl->nv_idx += xdr_u_int(xdr, nvl->nv_idx, &type);
+	nvl->nv_idx += xdr_u_int(xdr, nvl->nv_idx, &nelem);
 
-	switch (nvp_data->nv_type) {
+	switch (type) {
 	case DATA_TYPE_NVLIST:
 	case DATA_TYPE_NVLIST_ARRAY:
-		bzero(&nvlist, sizeof (nvlist));
+		bzero(&nvlist, sizeof(nvlist));
 		nvlist.nv_data = &nvp_data->nv_data[0];
 		nvlist.nv_idx = nvlist.nv_data;
-		for (int i = 0; i < nvp_data->nv_nelem; i++) {
-			nvlist.nv_asize =
-			    nvlist_size(xdr, nvlist.nv_data);
-			nvlist_decode_nvlist(xdr, &nvlist);
+		for (unsigned i = 0; i < nelem; i++) {
+			if (xdr->xdr_op == XDR_OP_ENCODE)
+				nvlist.nv_asize =
+				    nvlist_size(&xdrmem, nvlist.nv_data);
+			else
+				nvlist.nv_asize =
+				    nvlist_size(xdr, nvlist.nv_data);
+			nvlist_xdr_nvlist(xdr, &nvlist);
 			nvl->nv_idx = nvlist.nv_idx;
 			nvlist.nv_data = nvlist.nv_idx;
 		}
@@ -282,35 +400,86 @@ nvlist_nvp_decode(const xdr_t *xdr, nvlist_t *nvl, nvp_header_t *nvph)
 
 		break;
 	}
+	return (0);
 }
 
-static void
-nvlist_decode_nvlist(const xdr_t *xdr, nvlist_t *nvl)
+static int
+nvlist_xdr_nvlist(const xdr_t *xdr, nvlist_t *nvl)
 {
 	nvp_header_t *nvph;
-	nvs_data_t *nvs = (nvs_data_t *)nvl->nv_data;
+	nvs_data_t *nvs;
+	unsigned encoded_size, decoded_size;
+	int rv;
 
 	nvl->nv_idx = nvl->nv_data;
-	nvl->nv_idx += xdr->xdr_getint(xdr, (const uint8_t *)&nvs->nvl_version,
-	    &nvs->nvl_version);
-	nvl->nv_idx += xdr->xdr_getint(xdr, (const uint8_t *)&nvs->nvl_nvflag,
-	    &nvs->nvl_nvflag);
-
+	nvs = (nvs_data_t *)nvl->nv_data;
 	nvph = &nvs->nvl_pair;
-	nvl->nv_idx += xdr->xdr_getint(xdr,
-	    (const uint8_t *)&nvph->encoded_size, &nvph->encoded_size);
-	nvl->nv_idx += xdr->xdr_getint(xdr,
-	    (const uint8_t *)&nvph->decoded_size, &nvph->decoded_size);
 
-	while (nvph->encoded_size && nvph->decoded_size) {
-		nvlist_nvp_decode(xdr, nvl, nvph);
+	switch (xdr->xdr_op) {
+	case XDR_OP_ENCODE:
+		nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+		    nvs->nvl_version);
+		nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+		    nvs->nvl_nvflag);
+
+		encoded_size = nvph->encoded_size;
+		decoded_size = nvph->decoded_size;
+
+		nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+		    encoded_size);
+		nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+		    decoded_size);
+		break;
+
+	case XDR_OP_DECODE:
+		nvl->nv_idx += xdr->xdr_getuint(nvl->nv_idx,
+		    &nvs->nvl_version);
+		nvl->nv_idx += xdr->xdr_getuint(nvl->nv_idx,
+		    &nvs->nvl_nvflag);
+
+		nvl->nv_idx += xdr->xdr_getuint(nvl->nv_idx,
+		    &nvph->encoded_size);
+		nvl->nv_idx += xdr->xdr_getuint(nvl->nv_idx,
+		    &nvph->decoded_size);
+
+		encoded_size = nvph->encoded_size;
+		decoded_size = nvph->decoded_size;
+		break;
+
+	default:
+		return (EINVAL);
+	}
+
+	rv = 0;
+	while (encoded_size && decoded_size) {
+		rv = nvlist_xdr_nvp(xdr, nvl);
+		if (rv != 0)
+			return (rv);
 
 		nvph = (nvp_header_t *)(nvl->nv_idx);
-		nvl->nv_idx += xdr->xdr_getint(xdr, &nvph->encoded_size,
-		    &nvph->encoded_size);
-		nvl->nv_idx += xdr->xdr_getint(xdr, &nvph->decoded_size,
-		    &nvph->decoded_size);
+		switch (xdr->xdr_op) {
+		case XDR_OP_ENCODE:
+			encoded_size = nvph->encoded_size;
+			decoded_size = nvph->decoded_size;
+
+			nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+			    encoded_size);
+			nvl->nv_idx += xdr->xdr_putuint(nvl->nv_idx,
+			    decoded_size);
+			break;
+
+		case XDR_OP_DECODE:
+			nvl->nv_idx += xdr->xdr_getuint(&nvph->encoded_size,
+			    &nvph->encoded_size);
+			nvl->nv_idx += xdr->xdr_getuint(&nvph->decoded_size,
+			    &nvph->decoded_size);
+
+			encoded_size = nvph->encoded_size;
+			decoded_size = nvph->decoded_size;
+			break;
+		}
 	}
+	return (rv);
 }
 
 static int
@@ -323,15 +492,37 @@ nvlist_size(const xdr_t *xdr, const uint8_t *stream)
 	p += 2 * sizeof(unsigned);
 
 	pair = p;
-	p += xdr->xdr_getint(xdr, p, &encoded_size);
-	p += xdr->xdr_getint(xdr, p, &decoded_size);
+	p += xdr->xdr_getuint(p, &encoded_size);
+	p += xdr->xdr_getuint(p, &decoded_size);
 	while (encoded_size && decoded_size) {
 		p = pair + encoded_size;
 		pair = p;
-		p += xdr->xdr_getint(xdr, p, &encoded_size);
-		p += xdr->xdr_getint(xdr, p, &decoded_size);
+		p += xdr->xdr_getuint(p, &encoded_size);
+		p += xdr->xdr_getuint(p, &decoded_size);
 	}
 	return (p - stream);
+}
+
+/*
+ * Export nvlist to byte stream format.
+ */
+int
+nvlist_export(nvlist_t *nvl)
+{
+	int rv;
+	xdr_t xdr = {
+	    .xdr_op = XDR_OP_ENCODE,
+	    .xdr_putint = _putint,
+	    .xdr_putuint = _putuint
+	};
+
+	if (nvl->nv_header.nvh_encoding != NV_ENCODE_XDR)
+		return (ENOTSUP);
+
+	nvl->nv_idx = nvl->nv_data;
+	rv = nvlist_xdr_nvlist(&xdr, nvl);
+
+	return (rv);
 }
 
 /*
@@ -340,28 +531,49 @@ nvlist_size(const xdr_t *xdr, const uint8_t *stream)
  * Then translate the data.
  */
 nvlist_t *
-nvlist_import(const uint8_t *stream, char encoding, char endian)
+nvlist_import(const char *stream)
 {
 	nvlist_t *nvl;
+	xdr_t xdr = {
+	    .xdr_op = XDR_OP_DECODE,
+	    .xdr_getint = _getint,
+	    .xdr_getuint = _getuint
+	};
 
-	if (encoding != NV_ENCODE_XDR)
+	/* Check the nvlist head. */
+	if (stream[0] != NV_ENCODE_XDR ||
+	    (stream[1] != '\0' && stream[1] != '\1') ||
+	    stream[2] != '\0' || stream[3] != '\0' ||
+	    be32toh(*(uint32_t *)(stream + 4)) != NV_VERSION ||
+	    be32toh(*(uint32_t *)(stream + 8)) != NV_UNIQUE_NAME)
 		return (NULL);
 
 	nvl = malloc(sizeof(*nvl));
 	if (nvl == NULL)
 		return (nvl);
 
-	nvl->nv_asize = nvl->nv_size = nvlist_size(&ntoh, stream);
+	nvl->nv_header.nvh_encoding = stream[0];
+	nvl->nv_header.nvh_endian = stream[1];
+	nvl->nv_header.nvh_reserved1 = stream[2];
+	nvl->nv_header.nvh_reserved2 = stream[3];
+	nvl->nv_asize = nvl->nv_size = nvlist_size(&xdr,
+	    (const uint8_t *)stream + 4);
 	nvl->nv_data = malloc(nvl->nv_asize);
 	if (nvl->nv_data == NULL) {
 		free(nvl);
 		return (NULL);
 	}
 	nvl->nv_idx = nvl->nv_data;
-	bcopy(stream, nvl->nv_data, nvl->nv_asize);
+	bcopy(stream + 4, nvl->nv_data, nvl->nv_asize);
 
-	nvlist_decode_nvlist(&ntoh, nvl);
-	nvl->nv_idx = nvl->nv_data;
+	if (nvlist_xdr_nvlist(&xdr, nvl) == 0) {
+		nvl->nv_idx = nvl->nv_data;
+	} else {
+		free(nvl->nv_data);
+		free(nvl);
+		nvl = NULL;
+	}
+
 	return (nvl);
 }
 
@@ -432,7 +644,6 @@ nvlist_find(const nvlist_t *nvl, const char *name, data_type_t type,
 
 	while (nvp->encoded_size != 0 && nvp->decoded_size != 0) {
 		nvp_name = (nv_string_t *)((uint8_t *)nvp + sizeof(*nvp));
-
 		nvp_data = (nv_pair_data_t *)
 		    NV_ALIGN4((uintptr_t)&nvp_name->nv_data[0] +
 		    nvp_name->nv_size);
@@ -443,7 +654,7 @@ nvlist_find(const nvlist_t *nvl, const char *name, data_type_t type,
 				*elementsp = nvp_data->nv_nelem;
 			switch (nvp_data->nv_type) {
 			case DATA_TYPE_UINT64:
-				*(uint64_t *)valuep = 
+				*(uint64_t *)valuep =
 				    *(uint64_t *)nvp_data->nv_data;
 				return (0);
 			case DATA_TYPE_STRING:
@@ -476,7 +687,99 @@ nvlist_find(const nvlist_t *nvl, const char *name, data_type_t type,
 	return (ENOENT);
 }
 
-/*              
+int
+nvlist_add_uint64(nvlist_t *nvl, const char *name, uint64_t value)
+{
+	nvs_data_t *nvs;
+	nvp_header_t head, *hp;
+	uint8_t *ptr;
+	size_t namelen, valuelen;
+
+	nvs = (nvs_data_t *)nvl->nv_data;
+	if (nvs->nvl_nvflag & NV_UNIQUE_NAME)
+		(void) nvlist_remove(nvl, name, DATA_TYPE_UINT64);
+
+	namelen = strlen(name);
+	valuelen = sizeof(value);
+	head.encoded_size = 4 + 4 + 4 + NV_ALIGN4(namelen) + 4 + 4 +
+	    4 + NV_ALIGN(valuelen + 1);
+	head.decoded_size = NV_ALIGN(4 * 4 + namelen + 1) + valuelen;
+
+	if (nvl->nv_asize - nvl->nv_size < head.encoded_size + 8) {
+		ptr = realloc(nvl->nv_data, nvl->nv_asize + head.encoded_size);
+		if (ptr == NULL)
+			return (ENOMEM);
+		nvl->nv_data = ptr;
+		nvl->nv_asize += head.encoded_size;
+	}
+	nvl->nv_idx = nvl->nv_data + nvl->nv_size - sizeof(*hp);
+	bzero(nvl->nv_idx, head.encoded_size + 8);
+	hp = (nvp_header_t *)nvl->nv_idx;
+	*hp = head;
+	nvl->nv_idx += sizeof(*hp);
+	*(unsigned *)nvl->nv_idx = namelen;
+	nvl->nv_idx += sizeof(unsigned);
+	strlcpy((char *)nvl->nv_idx, name, namelen + 1);
+	nvl->nv_idx += NV_ALIGN4(namelen);
+	*(unsigned *)nvl->nv_idx = DATA_TYPE_UINT64;
+	nvl->nv_idx += sizeof(unsigned);
+	*(unsigned *)nvl->nv_idx = 1;
+	nvl->nv_idx += sizeof(unsigned);
+	*(uint64_t *)nvl->nv_idx = value;
+	nvl->nv_size += head.encoded_size;
+
+	return (0);
+}
+
+int
+nvlist_add_string(nvlist_t *nvl, const char *name, const char *value)
+{
+	nvs_data_t *nvs;
+	nvp_header_t head, *hp;
+	uint8_t *ptr;
+	size_t namelen, valuelen;
+
+	nvs = (nvs_data_t *)nvl->nv_data;
+	if (nvs->nvl_nvflag & NV_UNIQUE_NAME)
+		(void) nvlist_remove(nvl, name, DATA_TYPE_STRING);
+
+	namelen = strlen(name);
+	valuelen = strlen(value);
+	head.encoded_size = 4 + 4 + 4 + NV_ALIGN4(namelen) + 4 + 4 +
+	    4 + NV_ALIGN(valuelen + 1);
+	head.decoded_size = NV_ALIGN(4 * 4 + namelen + 1) +
+	    NV_ALIGN(valuelen + 1);
+
+	if (nvl->nv_asize - nvl->nv_size < head.encoded_size + 8) {
+		ptr = realloc(nvl->nv_data, nvl->nv_asize + head.encoded_size);
+		if (ptr == NULL)
+			return (ENOMEM);
+		nvl->nv_data = ptr;
+		nvl->nv_asize += head.encoded_size;
+	}
+	nvl->nv_idx = nvl->nv_data + nvl->nv_size - sizeof(*hp);
+	bzero(nvl->nv_idx, head.encoded_size + 8);
+	hp = (nvp_header_t *)nvl->nv_idx;
+	*hp = head;
+	nvl->nv_idx += sizeof(*hp);
+	*(unsigned *)nvl->nv_idx = namelen;
+	nvl->nv_idx += sizeof(unsigned);
+	strlcpy((char *)nvl->nv_idx, name, namelen + 1);
+	nvl->nv_idx += NV_ALIGN4(namelen);
+	*(unsigned *)nvl->nv_idx = DATA_TYPE_STRING;
+	nvl->nv_idx += sizeof(unsigned);
+	*(unsigned *)nvl->nv_idx = 1;
+	nvl->nv_idx += sizeof(unsigned);
+	*(unsigned *)nvl->nv_idx = valuelen;
+	nvl->nv_idx += sizeof(unsigned);
+	strlcpy((char *)nvl->nv_idx, value, valuelen + 1);
+	nvl->nv_idx += NV_ALIGN4(valuelen);
+	nvl->nv_size += head.encoded_size;
+
+	return (0);
+}
+
+/*
  * Return the next nvlist in an nvlist array.
  */
 int
@@ -535,7 +838,12 @@ nvlist_print(nvlist_t *nvl, unsigned int indent)
 	nv_string_t *nvp_name;
 	nv_pair_data_t *nvp_data;
 	nvlist_t nvlist;
-	int i, j;
+	unsigned i, j;
+	xdr_t xdr = {
+	    .xdr_op = XDR_OP_DECODE,
+	    .xdr_getint = mem_int,
+	    .xdr_getuint = mem_uint
+	};
 
 	data = (nvs_data_t *)nvl->nv_data;
 	nvp = &data->nvl_pair;  /* first pair in nvlist */
@@ -545,7 +853,7 @@ nvlist_print(nvlist_t *nvl, unsigned int indent)
 		    NV_ALIGN4((uintptr_t)&nvp_name->nv_data[0] +
 		    nvp_name->nv_size);
 
-		for (int i = 0; i < indent; i++)
+		for (i = 0; i < indent; i++)
 			printf(" ");
 
 		printf("%s [%d] %.*s", typenames[nvp_data->nv_type],
@@ -563,7 +871,7 @@ nvlist_print(nvlist_t *nvl, unsigned int indent)
 		case DATA_TYPE_STRING: {
 			nvp_name = (nv_string_t *)&nvp_data->nv_data[0];
 			printf(" = \"%.*s\"\n", nvp_name->nv_size,
-			    nvp_name->nv_data );
+			    nvp_name->nv_data);
 			break;
 		}
 
@@ -588,7 +896,7 @@ nvlist_print(nvlist_t *nvl, unsigned int indent)
 					    nvp_name->nv_data);
 				}
 				nvlist.nv_data = (uint8_t *)data +
-				    nvlist_size(&native, nvlist.nv_data);
+				    nvlist_size(&xdr, nvlist.nv_data);
 			}
 			break;
 

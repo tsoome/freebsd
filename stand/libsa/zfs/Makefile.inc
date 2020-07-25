@@ -10,8 +10,9 @@ CFLAGS+=	-DSKEIN_LOOP=111
 CFLAGS+=	-I${LDRSRC}
 CFLAGS+=	-I${SYSDIR}/cddl/boot/zfs
 CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/common
+CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/common/fs/zfs
 CFLAGS+=	-I${SYSDIR}/crypto/skein
 
-CFLAGS.zfs.c+=	-I${SRCTOP}/sys/cddl/contrib/opensolaris/common/lz4
+CFLAGS.zfs.c+=	-I${SYSDIR}/cddl/contrib/opensolaris/common/lz4
 
 CFLAGS+=	-Wformat -Wall

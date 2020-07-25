@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2020 by Delphix. All rights reserved.
  * Copyright (c) 2017, Intel Corporation.
  */
 
@@ -173,6 +173,8 @@ extern nvlist_t *vdev_label_read_config(vdev_t *vd, uint64_t txg);
 extern void vdev_uberblock_load(vdev_t *, struct uberblock *, nvlist_t **);
 extern void vdev_label_write(zio_t *zio, vdev_t *vd, int l, abd_t *buf, uint64_t
     offset, uint64_t size, zio_done_func_t *done, void *priv, int flags);
+extern int vdev_label_read_bootenv(vdev_t *, nvlist_t *);
+extern int vdev_label_write_bootenv(vdev_t *, nvlist_t *);
 
 typedef enum {
 	VDEV_LABEL_CREATE,	/* create/add a new device */
@@ -184,8 +186,6 @@ typedef enum {
 } vdev_labeltype_t;
 
 extern int vdev_label_init(vdev_t *vd, uint64_t txg, vdev_labeltype_t reason);
-
-extern int vdev_label_write_pad2(vdev_t *vd, const char *buf, size_t size);
 
 #ifdef	__cplusplus
 }

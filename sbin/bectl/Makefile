@@ -11,7 +11,9 @@ LIBADD+= be
 LIBADD+= jail
 LIBADD+= nvpair
 LIBADD+= util
+LIBADD+= zfsbootenv
 
+CFLAGS+= -I${SRCTOP}/lib/libzfsbootenv
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzfs/common
 CFLAGS+= -I${SRCTOP}/sys/cddl/compat/opensolaris
 CFLAGS+= -I${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common

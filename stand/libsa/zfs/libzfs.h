@@ -26,14 +26,14 @@
  * $FreeBSD$
  */
 
+#ifndef _BOOT_LIBZFS_H_
+#define _BOOT_LIBZFS_H_
+
 #include <zfsimpl.h>
 
 #ifdef LOADER_GELI_SUPPORT
 #include <crypto/intake.h>
 #endif
-
-#ifndef _BOOT_LIBZFS_H_
-#define _BOOT_LIBZFS_H_
 
 #define	ZFS_MAXNAMELEN	256
 
@@ -54,6 +54,7 @@ struct zfs_devdesc {
 #define	NV_UNIQUE_NAME_TYPE	0x2
 
 #define	NV_ALIGN4(x)		(((x) + 3) & ~3)
+#define	NV_ALIGN(x)		(((x) + 7) & ~7)
 
 /*
  * nvlist header.
@@ -109,17 +110,22 @@ typedef struct {
 
 nvlist_t *nvlist_create(int);
 void nvlist_destroy(nvlist_t *);
-nvlist_t *nvlist_import(const uint8_t *, char, char);
+nvlist_t *nvlist_import(const char *);
+int nvlist_export(nvlist_t *);
 int nvlist_remove(nvlist_t *, const char *, data_type_t);
 void nvlist_print(nvlist_t *, unsigned int);
 int nvlist_find(const nvlist_t *, const char *, data_type_t,
     int *, void *, int *);
 int nvlist_next(nvlist_t *);
+int nvlist_add_string(nvlist_t *, const char *, const char *);
+int nvlist_add_uint64(nvlist_t *, const char *, uint64_t);
 
 int	zfs_parsedev(struct zfs_devdesc *dev, const char *devspec,
 		     const char **path);
 char	*zfs_fmtdev(void *vdev);
-int	zfs_nextboot(void *vdev, char *buf, size_t size);
+int	zfs_get_bootonce(void *, const char *, char *, size_t);
+int	zfs_get_bootenv(void *, nvlist_t **);
+int	zfs_set_bootenv(void *, nvlist_t *);
 int	zfs_probe_dev(const char *devname, uint64_t *pool_guid);
 int	zfs_list(const char *name);
 uint64_t ldi_get_size(void *);
@@ -127,6 +133,8 @@ void	init_zfs_bootenv(const char *currdev);
 int	zfs_bootenv(const char *name);
 int	zfs_belist_add(const char *name, uint64_t __unused);
 int	zfs_set_env(void);
+
+nvlist_t *vdev_read_bootenv(vdev_t *);
 
 extern struct devsw zfs_dev;
 extern struct fs_ops zfs_fsops;

@@ -197,6 +197,7 @@ _LIBRARIES=	\
 		z \
 		zfs_core \
 		zfs \
+		zfsbootenv \
 		zpool \
 
 .if ${MK_BLACKLIST} != "no"
@@ -376,9 +377,10 @@ _DP_fifolog=	z
 _DP_ipf=	kvm
 _DP_zfs=	md pthread umem util uutil m nvpair avl bsdxml geom nvpair z \
 		zfs_core
+_DP_zfsbootenv= zfs nvpair
 _DP_zfs_core=	nvpair
 _DP_zpool=	md pthread z nvpair avl umem
-_DP_be=		zfs nvpair
+_DP_be=		zfs nvpair zfsbootenv
 
 # OFED support
 .if ${MK_OFED} != "no"
@@ -587,6 +589,7 @@ LIBUMEMDIR=	${OBJTOP}/cddl/lib/libumem
 LIBUUTILDIR=	${OBJTOP}/cddl/lib/libuutil
 LIBZFSDIR=	${OBJTOP}/cddl/lib/libzfs
 LIBZFS_COREDIR=	${OBJTOP}/cddl/lib/libzfs_core
+LIBZFSBOOTENVDIR=	${OBJTOP}/lib/libzfsbootenv
 LIBZPOOLDIR=	${OBJTOP}/cddl/lib/libzpool
 
 # OFED support

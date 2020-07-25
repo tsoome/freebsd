@@ -483,8 +483,7 @@ error:
 }
 
 static int
-vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
-    size_t bytes)
+vdev_write(vdev_t *vdev, off_t offset, void *buf, size_t bytes)
 {
 	int fd, ret;
 	size_t head, tail, total_size, full_sec_size;
@@ -493,8 +492,8 @@ vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
 	ssize_t res;
 	char *outbuf, *bouncebuf;
 
-	fd = (uintptr_t)priv;
-	outbuf = (char *) buf;
+	fd = (uintptr_t)vdev->v_priv;
+	outbuf = (char *)buf;
 	bouncebuf = NULL;
 
 	ret = ioctl(fd, DIOCGSECTORSIZE, &secsz);
@@ -529,14 +528,14 @@ vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
 	/* Partial data for first sector */
 	if (head > 0) {
 		res = read(fd, bouncebuf, secsz);
-		if (res != secsz) {
+		if ((unsigned)res != secsz) {
 			ret = EIO;
 			goto error;
 		}
 		memcpy(bouncebuf + head, outbuf, min(secsz - head, bytes));
 		(void) lseek(fd, -secsz, SEEK_CUR);
 		res = write(fd, bouncebuf, secsz);
-		if (res != secsz) {
+		if ((unsigned)res != secsz) {
 			ret = EIO;
 			goto error;
 		}
@@ -552,20 +551,20 @@ vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
 	if (full_sec_size > 0) {
 		if (bytes < full_sec_size) {
 			res = read(fd, bouncebuf, secsz);
-			if (res != secsz) {
+			if ((unsigned)res != secsz) {
 				ret = EIO;
 				goto error;
 			}
 			memcpy(bouncebuf, outbuf, bytes);
 			(void) lseek(fd, -secsz, SEEK_CUR);
 			res = write(fd, bouncebuf, secsz);
-			if (res != secsz) {
+			if ((unsigned)res != secsz) {
 				ret = EIO;
 				goto error;
 			}
 		} else {
 			res = write(fd, outbuf, full_sec_size);
-			if (res != full_sec_size) {
+			if ((unsigned)res != full_sec_size) {
 				ret = EIO;
 				goto error;
 			}
@@ -576,14 +575,14 @@ vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
 	/* Partial data write to last sector */
 	if (do_tail_write) {
 		res = read(fd, bouncebuf, secsz);
-		if (res != secsz) {
+		if ((unsigned)res != secsz) {
 			ret = EIO;
 			goto error;
 		}
 		memcpy(bouncebuf, outbuf, secsz - tail);
 		(void) lseek(fd, -secsz, SEEK_CUR);
 		res = write(fd, bouncebuf, secsz);
-		if (res != secsz) {
+		if ((unsigned)res != secsz) {
 			ret = EIO;
 			goto error;
 		}
@@ -593,102 +592,6 @@ vdev_write(vdev_t *vdev __unused, void *priv, off_t offset, void *buf,
 error:
 	free(bouncebuf);
 	return (ret);
-}
-
-static void
-vdev_clear_pad2(vdev_t *vdev)
-{
-	vdev_t *kid;
-	vdev_boot_envblock_t *be;
-	off_t off = offsetof(vdev_label_t, vl_be);
-	zio_checksum_info_t *ci;
-	zio_cksum_t cksum;
-
-	STAILQ_FOREACH(kid, &vdev->v_children, v_childlink) {
-		if (kid->v_state != VDEV_STATE_HEALTHY)
-			continue;
-		vdev_clear_pad2(kid);
-	}
-
-	if (!STAILQ_EMPTY(&vdev->v_children))
-		return;
-
-	be = calloc(1, sizeof (*be));
-	if (be == NULL) {
-		printf("failed to clear be area: out of memory\n");
-		return;
-	}
-
-	ci = &zio_checksum_table[ZIO_CHECKSUM_LABEL];
-	be->vbe_zbt.zec_magic = ZEC_MAGIC;
-	zio_checksum_label_verifier(&be->vbe_zbt.zec_cksum, off);
-	ci->ci_func[0](be, sizeof (*be), NULL, &cksum);
-	be->vbe_zbt.zec_cksum = cksum;
-
-	if (vdev_write(vdev, vdev->v_read_priv, off, be, VDEV_PAD_SIZE)) {
-		printf("failed to clear be area of primary vdev: %d\n",
-		    errno);
-	}
-	free(be);
-}
-
-/*
- * Read the next boot command from pad2.
- * If any instance of pad2 is set to empty string, or the returned string
- * values are not the same, we consider next boot not to be set.
- */
-static char *
-vdev_read_pad2(vdev_t *vdev)
-{
-	vdev_t *kid;
-	char *tmp, *result = NULL;
-	vdev_boot_envblock_t *be;
-	off_t off = offsetof(vdev_label_t, vl_be);
-
-	STAILQ_FOREACH(kid, &vdev->v_children, v_childlink) {
-		if (kid->v_state != VDEV_STATE_HEALTHY)
-			continue;
-		tmp = vdev_read_pad2(kid);
-		if (tmp == NULL)
-			continue;
-
-		/* The next boot is not set, we are done. */
-		if (*tmp == '\0') {
-			free(result);
-			return (tmp);
-		}
-		if (result == NULL) {
-			result = tmp;
-			continue;
-		}
-		/* Are the next boot strings different? */
-		if (strcmp(result, tmp) != 0) {
-			free(tmp);
-			*result = '\0';
-			break;
-		}
-		free(tmp);
-	}
-	if (result != NULL)
-		return (result);
-
-	be = malloc(sizeof (*be));
-	if (be == NULL)
-		return (NULL);
-
-	if (vdev_read(vdev, vdev->v_read_priv, off, be, sizeof (*be))) {
-		return (NULL);
-	}
-
-	switch (be->vbe_version) {
-	case VB_RAW:
-	case VB_NVLIST:
-		result = strdup(be->vbe_bootenv);
-	default:
-		/* Backward compatibility with initial nextboot feaure. */
-		result = strdup((char *)be);
-	}
-	return (result);
 }
 
 static int
@@ -743,7 +646,7 @@ zfs_probe(int fd, uint64_t *pool_guid)
 	int ret;
 
 	spa = NULL;
-	ret = vdev_probe(vdev_read, (void *)(uintptr_t)fd, &spa);
+	ret = vdev_probe(vdev_read, vdev_write, (void *)(uintptr_t)fd, &spa);
 	if (ret == 0 && pool_guid != NULL)
 		*pool_guid = spa->spa_guid;
 	return (ret);
@@ -766,7 +669,7 @@ zfs_probe_partition(void *arg, const char *partname,
 	ppa = (struct zfs_probe_args *)arg;
 	strncpy(devname, ppa->devname, strlen(ppa->devname) - 1);
 	devname[strlen(ppa->devname) - 1] = '\0';
-	sprintf(devname, "%s%s:", devname, partname);
+	snprintf(devname, sizeof(devname), "%s%s:", devname, partname);
 	pa.fd = open(devname, O_RDWR);
 	if (pa.fd == -1)
 		return (0);
@@ -789,55 +692,95 @@ zfs_probe_partition(void *arg, const char *partname,
 	return (0);
 }
 
+/*
+ * Return bootenv nvlist from pool label.
+ */
 int
-zfs_nextboot(void *vdev, char *buf, size_t size)
+zfs_get_bootenv(void *vdev, nvlist_t **benvp)
+{
+	struct zfs_devdesc *dev = (struct zfs_devdesc *)vdev;
+	nvlist_t *benv = NULL;
+	vdev_t *vd;
+	spa_t *spa;
+
+	if (dev->dd.d_dev->dv_type != DEVT_ZFS)
+		return (ENOTSUP);
+
+	if ((spa = spa_find_by_dev(dev)) == NULL)
+		return (ENXIO);
+
+	if (spa->spa_bootenv == NULL) {
+		STAILQ_FOREACH(vd, &spa->spa_root_vdev->v_children,
+		    v_childlink) {
+			benv = vdev_read_bootenv(vd);
+
+			if (benv != NULL)
+				break;
+		}
+		spa->spa_bootenv = benv;
+	} else {
+		benv = spa->spa_bootenv;
+	}
+
+	if (benv == NULL)
+		return (ENOENT);
+
+	*benvp = benv;
+	return (0);
+}
+
+/*
+ * Store nvlist to pool label bootenv area. Also updates cached pointer in spa.
+ */
+int
+zfs_set_bootenv(void *vdev, nvlist_t *benv)
 {
 	struct zfs_devdesc *dev = (struct zfs_devdesc *)vdev;
 	spa_t *spa;
 	vdev_t *vd;
-	char *result = NULL;
 
 	if (dev->dd.d_dev->dv_type != DEVT_ZFS)
-		return (1);
+		return (ENOTSUP);
 
-	if (dev->pool_guid == 0)
-		spa = STAILQ_FIRST(&zfs_pools);
-	else
-		spa = spa_find_by_guid(dev->pool_guid);
-
-	if (spa == NULL) {
-		printf("ZFS: can't find pool by guid\n");
-	return (1);
-	}
+	if ((spa = spa_find_by_dev(dev)) == NULL)
+		return (ENXIO);
 
 	STAILQ_FOREACH(vd, &spa->spa_root_vdev->v_children, v_childlink) {
-		char *tmp = vdev_read_pad2(vd);
-
-		/* Continue on error. */
-		if (tmp == NULL)
-			continue;
-		/* Nextboot is not set. */
-		if (*tmp == '\0') {
-			free(result);
-			free(tmp);
-			return (1);
-		}
-		if (result == NULL) {
-			result = tmp;
-			continue;
-		}
-		free(tmp);
-	}
-	if (result == NULL)
-		return (1);
-
-	STAILQ_FOREACH(vd, &spa->spa_root_vdev->v_children, v_childlink) {
-		vdev_clear_pad2(vd);
+		vdev_write_bootenv(vd, benv);
 	}
 
-	strlcpy(buf, result, size);
-	free(result);
+	spa->spa_bootenv = benv;
 	return (0);
+}
+
+/*
+ * Get bootonce value by key. The bootonce <key, value> pair is removed
+ * from the bootenv nvlist and the remaining nvlist is committed back to disk.
+ */
+int
+zfs_get_bootonce(void *vdev, const char *key, char *buf, size_t size)
+{
+	nvlist_t *benv;
+	char *result = NULL;
+	int result_size, rv;
+
+	if ((rv = zfs_get_bootenv(vdev, &benv)) != 0)
+		return (rv);
+
+	if ((rv = nvlist_find(benv, key, DATA_TYPE_STRING, NULL,
+	    &result, &result_size)) == 0) {
+		if (result_size == 0) {
+			/* ignore empty string */
+			rv = ENOENT;
+		} else {
+			size = MIN((size_t)result_size + 1, size);
+			strlcpy(buf, result, size);
+		}
+		(void) nvlist_remove(benv, key, DATA_TYPE_STRING);
+		(void) zfs_set_bootenv(vdev, benv);
+	}
+
+	return (rv);
 }
 
 int
@@ -936,12 +879,9 @@ zfs_dev_open(struct open_file *f, ...)
 	dev = va_arg(args, struct zfs_devdesc *);
 	va_end(args);
 
-	if (dev->pool_guid == 0)
-		spa = STAILQ_FIRST(&zfs_pools);
-	else
-		spa = spa_find_by_guid(dev->pool_guid);
-	if (!spa)
+	if ((spa = spa_find_by_dev(dev)) == NULL)
 		return (ENXIO);
+
 	mount = malloc(sizeof(*mount));
 	if (mount == NULL)
 		rv = ENOMEM;
@@ -1070,10 +1010,11 @@ zfs_fmtdev(void *vdev)
 	}
 
 	if (rootname[0] == '\0')
-		sprintf(buf, "%s:%s:", dev->dd.d_dev->dv_name, spa->spa_name);
+		snprintf(buf, sizeof(buf), "%s:%s:", dev->dd.d_dev->dv_name,
+		    spa->spa_name);
 	else
-		sprintf(buf, "%s:%s/%s:", dev->dd.d_dev->dv_name, spa->spa_name,
-		    rootname);
+		snprintf(buf, sizeof(buf), "%s:%s/%s:", dev->dd.d_dev->dv_name,
+		    spa->spa_name, rootname);
 	return (buf);
 }
 

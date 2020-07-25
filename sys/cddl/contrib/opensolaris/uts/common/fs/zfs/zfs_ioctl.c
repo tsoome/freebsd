@@ -3654,50 +3654,72 @@ zfs_ioc_log_history(const char *unused, nvlist_t *innvl, nvlist_t *outnvl)
 	return (error);
 }
 
+/*
+ * This ioctl is used to set the bootenv configuration on the current
+ * pool. This configuration is stored in the second padding area of the label,
+ * and it is used by the bootloader(s) to store bootloader and/or system
+ * specific data.
+ * The data is stored as nvlist data stream, and is protected by
+ * an embedded checksum.
+ */
+/* ARGSUSED */
+static const zfs_ioc_key_t zfs_keys_set_bootenv[] = {
+	{"version",	DATA_TYPE_UINT64, 0},
+	{"<keys>",	DATA_TYPE_ANY, ZK_OPTIONAL | ZK_WILDCARDLIST},
+};
+
+static int
+zfs_ioc_set_bootenv(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int error;
+	spa_t *spa;
+
+	if ((error = spa_open(name, &spa, FTAG)) != 0)
+		return (error);
+	spa_vdev_state_enter(spa, SCL_ALL);
+	error = vdev_label_write_bootenv(spa->spa_root_vdev, innvl);
+	(void) spa_vdev_state_exit(spa, NULL, 0);
+	spa_close(spa, FTAG);
+	return (error);
+}
+
+static const zfs_ioc_key_t zfs_keys_get_bootenv[] = {
+	/* no nvl keys */
+};
+
+ /* ARGSUSED */
+static int
+zfs_ioc_get_bootenv(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	spa_t *spa;
+	int error;
+
+	if ((error = spa_open(name, &spa, FTAG)) != 0)
+		return (error);
+	spa_vdev_state_enter(spa, SCL_ALL);
+	error = vdev_label_read_bootenv(spa->spa_root_vdev, outnvl);
+	(void) spa_vdev_state_exit(spa, NULL, 0);
+	spa_close(spa, FTAG);
+	return (error);
+}
+
 #ifdef __FreeBSD__
 static const zfs_ioc_key_t zfs_keys_nextboot[] = {
 	{"command",	DATA_TYPE_STRING,	0},
 };
 
 static int
-zfs_ioc_nextboot(const char *unused, nvlist_t *innvl, nvlist_t *outnvl)
+zfs_ioc_nextboot(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
 {
-	char name[MAXNAMELEN];
 	spa_t *spa;
-	vdev_t *vd;
-	char *command;
-	uint64_t pool_guid;
-	uint64_t vdev_guid;
 	int error;
-
-	if (nvlist_lookup_uint64(innvl,
-	    ZPOOL_CONFIG_POOL_GUID, &pool_guid) != 0)
-		return (EINVAL);
-	if (nvlist_lookup_uint64(innvl,
-	    ZPOOL_CONFIG_GUID, &vdev_guid) != 0)
-		return (EINVAL);
-	command = fnvlist_lookup_string(innvl, "command");
-
-	mutex_enter(&spa_namespace_lock);
-	spa = spa_by_guid(pool_guid, vdev_guid);
-	if (spa != NULL)
-		strcpy(name, spa_name(spa));
-	mutex_exit(&spa_namespace_lock);
-	if (spa == NULL)
-		return (ENOENT);
 
 	if ((error = spa_open(name, &spa, FTAG)) != 0)
 		return (error);
+
 	spa_vdev_state_enter(spa, SCL_ALL);
-	vd = spa_lookup_by_guid(spa, vdev_guid, B_TRUE);
-	if (vd == NULL) {
-		(void) spa_vdev_state_exit(spa, NULL, ENXIO);
-		spa_close(spa, FTAG);
-		return (ENODEV);
-	}
-	error = vdev_label_write_pad2(vd, command, strlen(command));
+	error = vdev_label_write_bootenv(spa->spa_root_vdev, innvl);
 	(void) spa_vdev_state_exit(spa, NULL, 0);
-	txg_wait_synced(spa->spa_dsl_pool, 0);
 	spa_close(spa, FTAG);
 	return (error);
 }
@@ -6564,6 +6586,16 @@ zfs_ioctl_init(void)
 	zfs_ioctl_register("reopen", ZFS_IOC_POOL_REOPEN, zfs_ioc_pool_reopen,
 	    zfs_secpolicy_config, POOL_NAME, POOL_CHECK_SUSPENDED, B_TRUE,
 	    B_TRUE, zfs_keys_pool_reopen, ARRAY_SIZE(zfs_keys_pool_reopen));
+
+	zfs_ioctl_register("set_bootenv", ZFS_IOC_SET_BOOTENV,
+	    zfs_ioc_set_bootenv, zfs_secpolicy_config, POOL_NAME,
+	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_FALSE, B_TRUE,
+	    zfs_keys_set_bootenv, ARRAY_SIZE(zfs_keys_set_bootenv));
+
+	zfs_ioctl_register("get_bootenv", ZFS_IOC_GET_BOOTENV,
+	    zfs_ioc_get_bootenv, zfs_secpolicy_none, POOL_NAME,
+	    POOL_CHECK_SUSPENDED, B_FALSE, B_TRUE,
+	    zfs_keys_get_bootenv, ARRAY_SIZE(zfs_keys_get_bootenv));
 
 	/* IOCTLS that use the legacy function signature */
 

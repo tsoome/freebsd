@@ -212,7 +212,7 @@ SUBDIR.${MK_UNBOUND}+=	libunbound
 SUBDIR.${MK_USB}+=	libusbhid libusb
 SUBDIR.${MK_OFED}+=	ofed
 SUBDIR.${MK_VERIEXEC}+=	libveriexec
-SUBDIR.${MK_ZFS}+=	libbe
+SUBDIR.${MK_ZFS}+=	libbe libzfsbootenv
 
 .if !make(install)
 SUBDIR_PARALLEL=
