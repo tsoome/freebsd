@@ -152,6 +152,7 @@
 #include <sys/fs/zfs.h>
 #include <sys/trim_map.h>
 #include <sys/byteorder.h>
+#include <sys/zfs_bootenv.h>
 
 static boolean_t vdev_trim_on_init = B_TRUE;
 SYSCTL_DECL(_vfs_zfs_vdev);
@@ -1094,7 +1095,8 @@ vdev_label_read_bootenv(vdev_t *rvd, nvlist_t *bootenv)
 			 * with key "envmap".
 			 */
 			vbe->vbe_bootenv[sizeof (vbe->vbe_bootenv) - 1] = '\0';
-			fnvlist_add_string(bootenv, "envmap", vbe->vbe_bootenv);
+			fnvlist_add_string(bootenv, GRUB_ENVMAP,
+			    vbe->vbe_bootenv);
 			break;
 
 		case VB_NVLIST:
@@ -1109,7 +1111,7 @@ vdev_label_read_bootenv(vdev_t *rvd, nvlist_t *bootenv)
 		default:
 			/* Check for FreeBSD zfs bootonce command string */
 			buf = abd_to_buf(abd);
-			fnvlist_add_string(bootenv, "command", buf);
+			fnvlist_add_string(bootenv, FREEBSD_BOOTONCE, buf);
 		}
 
 		/*
@@ -1171,10 +1173,10 @@ vdev_label_write_bootenv(vdev_t *vd, nvlist_t *env)
 	nvbuf = bootenv->vbe_bootenv;
 	nvsize = sizeof (bootenv->vbe_bootenv);
 
-	bootenv->vbe_version = fnvlist_lookup_uint64(env, "version");
+	bootenv->vbe_version = fnvlist_lookup_uint64(env, BOOTENV_VERSION);
 	switch (bootenv->vbe_version) {
 	case VB_RAW:
-		if (nvlist_lookup_string(env, "envmap", &nvbuf) == 0) {
+		if (nvlist_lookup_string(env, GRUB_ENVMAP, &nvbuf) == 0) {
 			(void) strlcpy(bootenv->vbe_bootenv, nvbuf, nvsize);
 		}
 		error = 0;
