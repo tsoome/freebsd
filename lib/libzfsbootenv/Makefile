@@ -4,7 +4,7 @@
 
 PACKAGE=	runtime
 LIB=		zfsbootenv
-SHLIB_MAJOR=	0
+SHLIB_MAJOR=	1
 WARNS?=		1
 
 LIBADD+=	zfs
