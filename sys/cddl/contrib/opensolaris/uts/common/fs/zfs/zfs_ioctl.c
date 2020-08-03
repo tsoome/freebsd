@@ -213,6 +213,7 @@
 #include <sys/vdev_removal.h>
 #include <sys/vdev_impl.h>
 #include <sys/vdev_initialize.h>
+#include <sys/zfs_bootenv.h>
 
 #include "zfs_namecheck.h"
 #include "zfs_prop.h"
@@ -3664,8 +3665,8 @@ zfs_ioc_log_history(const char *unused, nvlist_t *innvl, nvlist_t *outnvl)
  */
 /* ARGSUSED */
 static const zfs_ioc_key_t zfs_keys_set_bootenv[] = {
-	{"version",	DATA_TYPE_UINT64, 0},
-	{"<keys>",	DATA_TYPE_ANY, ZK_OPTIONAL | ZK_WILDCARDLIST},
+	{BOOTENV_VERSION,	DATA_TYPE_UINT64, 0},
+	{"<keys>",		DATA_TYPE_ANY, ZK_OPTIONAL | ZK_WILDCARDLIST},
 };
 
 static int
@@ -3705,17 +3706,38 @@ zfs_ioc_get_bootenv(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
 
 #ifdef __FreeBSD__
 static const zfs_ioc_key_t zfs_keys_nextboot[] = {
-	{"command",	DATA_TYPE_STRING,	0},
+	{BOOTENV_VERSION,		DATA_TYPE_UINT64,	0},
+	{ZPOOL_CONFIG_POOL_GUID,	DATA_TYPE_UINT64,	0},
+	{ZPOOL_CONFIG_GUID,		DATA_TYPE_UINT64,	0},
+	{FREEBSD_BOOTONCE,		DATA_TYPE_STRING,	0},
 };
 
+/* This interface should be deprecated */
 static int
 zfs_ioc_nextboot(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
 {
+	char name[MAXNAMELEN];
 	spa_t *spa;
+	uint64_t pool_guid;
+	uint64_t vdev_guid;
 	int error;
+
+	pool_guid = fnvlist_lookup_uint64(innvl, ZPOOL_CONFIG_POOL_GUID);
+	vdev_guid = fnvlist_lookup_uint64(innvl, ZPOOL_CONFIG_GUID);
+	mutex_enter(&spa_namespace_lock);
+	spa = spa_by_guid(pool_guid, vdev_guid);
+	if (spa != NULL)
+		strcpy(name, spa_name(spa));
+	mutex_exit(&spa_namespace_lock);
+	if (spa == NULL)
+		return (ENOENT);
 
 	if ((error = spa_open(name, &spa, FTAG)) != 0)
 		return (error);
+
+	/* No need to store pool and vdev guids */
+	fnvlist_remove(innvl, ZPOOL_CONFIG_POOL_GUID);
+	fnvlist_remove(innvl, ZPOOL_CONFIG_GUID);
 
 	spa_vdev_state_enter(spa, SCL_ALL);
 	error = vdev_label_write_bootenv(spa->spa_root_vdev, innvl);
