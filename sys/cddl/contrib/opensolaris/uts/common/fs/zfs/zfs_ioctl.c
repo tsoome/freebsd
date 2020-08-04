@@ -3714,7 +3714,7 @@ static const zfs_ioc_key_t zfs_keys_nextboot[] = {
 
 /* This interface should be deprecated */
 static int
-zfs_ioc_nextboot(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
+zfs_ioc_nextboot(const char *unused __unused, nvlist_t *innvl, nvlist_t *outnvl)
 {
 	char name[MAXNAMELEN];
 	spa_t *spa;
