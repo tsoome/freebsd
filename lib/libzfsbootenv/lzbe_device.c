@@ -69,9 +69,9 @@ lzbe_set_boot_device(const char *pool, const char *device)
 	/*
 	 * If device name is empty, remove boot device configuration.
 	 */
-	if ((device == NULL || *device == '\0') &&
-	    nvlist_exists(nv, OS_BOOTONCE)) {
-		fnvlist_remove(nv, OS_BOOTONCE);
+	if (device == NULL || *device == '\0') {
+		if (nvlist_exists(nv, OS_BOOTONCE))
+			fnvlist_remove(nv, OS_BOOTONCE);
 	} else {
 		/*
 		 * Use device name directly if it does start with
@@ -145,9 +145,9 @@ lzbe_get_boot_device(const char *pool, char **device)
 				rv = ENOMEM;
 			}
 		}
+		nvlist_free(nv);
 	}
 
-	nvlist_free(nv);
 	zpool_close(zphdl);
 	libzfs_fini(hdl);
 	return (rv);
