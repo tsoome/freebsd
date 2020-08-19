@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: head/stand/libsa/stand.h 364398 2020-08-19 15:27:09Z tsoome $
  * From	$NetBSD: stand.h,v 1.22 1997/06/26 19:17:40 drochner Exp $	
  */
 
@@ -337,6 +337,7 @@ extern struct env_var	*env_getenv(const char *name);
 extern int		env_setenv(const char *name, int flags,
 				   const void *value, ev_sethook_t sethook,
 				   ev_unsethook_t unsethook);
+extern void		env_discard(struct env_var *);
 extern char		*getenv(const char *name);
 extern int		setenv(const char *name, const char *value,
 			       int overwrite);
