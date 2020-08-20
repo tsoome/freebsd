@@ -1,6 +1,6 @@
 #! $FreeBSD$
 
-.include <src.opts.mk>
+.PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libzfsbootenv/common
 
 PACKAGE=	runtime
 LIB=		zfsbootenv
@@ -17,6 +17,7 @@ CFLAGS+= -I${.CURDIR}
 CFLAGS+= -I${SRCTOP}/cddl/compat/opensolaris/include
 CFLAGS+= -I${SRCTOP}/cddl/compat/opensolaris/lib/libumem
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzfs/common
+CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzfsbootenv/common
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzfs_core/common
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libzpool/common
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/lib/libnvpair

@@ -589,7 +589,7 @@ LIBUMEMDIR=	${OBJTOP}/cddl/lib/libumem
 LIBUUTILDIR=	${OBJTOP}/cddl/lib/libuutil
 LIBZFSDIR=	${OBJTOP}/cddl/lib/libzfs
 LIBZFS_COREDIR=	${OBJTOP}/cddl/lib/libzfs_core
-LIBZFSBOOTENVDIR=	${OBJTOP}/lib/libzfsbootenv
+LIBZFSBOOTENVDIR=	${OBJTOP}/cddl/lib/libzfsbootenv
 LIBZPOOLDIR=	${OBJTOP}/cddl/lib/libzpool
 
 # OFED support
