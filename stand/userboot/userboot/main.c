@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <setjmp.h>
 #include <sys/disk.h>
+#include <sys/zfs_bootenv.h>
 
 #include "bootstrap.h"
 #include "disk.h"
@@ -274,13 +275,14 @@ extract_currdev(void)
 	if (userboot_zfs_found) {
 		buf = malloc(VDEV_PAD_SIZE);
 		if (buf != NULL) {
-			if (zfs_get_bootonce(&zdev, "command", buf,
+			if (zfs_get_bootonce(&zdev, OS_BOOTONCE, buf,
 			    VDEV_PAD_SIZE) == 0) {
 				printf("zfs bootonce: %s\n", buf);
 				set_currdev(buf);
 				setenv("zfs-bootonce", buf, 1);
 			}
 			free(buf);
+			(void) zfs_attach_nvstore(&zdev);
 		}
 	}
 #endif

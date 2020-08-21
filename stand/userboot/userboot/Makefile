@@ -35,6 +35,7 @@ CFLAGS+=	-Wall
 CFLAGS+=	-I${BOOTSRC}/userboot
 
 CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/common
+CFLAGS.main.c += -I${SYSDIR}/cddl/contrib/opensolaris/uts/common/fs/zfs
 CWARNFLAGS.main.c += -Wno-implicit-function-declaration
 
 LDFLAGS+=	-nostdlib -Wl,-Bsymbolic

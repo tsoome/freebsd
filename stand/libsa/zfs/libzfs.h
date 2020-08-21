@@ -23,7 +23,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: head/stand/libsa/zfs/libzfs.h 364355 2020-08-18 19:48:04Z oshogbo $
  */
 
 #ifndef _BOOT_LIBZFS_H_
@@ -110,27 +110,56 @@ typedef struct {
 
 nvlist_t *nvlist_create(int);
 void nvlist_destroy(nvlist_t *);
-nvlist_t *nvlist_import(const char *);
+nvlist_t *nvlist_import(const char *, size_t);
 int nvlist_export(nvlist_t *);
 int nvlist_remove(nvlist_t *, const char *, data_type_t);
-void nvlist_print(nvlist_t *, unsigned int);
+void nvpair_print(nvp_header_t *, unsigned int);
+void nvlist_print(const nvlist_t *, unsigned int);
+char *nvstring_get(nv_string_t *);
 int nvlist_find(const nvlist_t *, const char *, data_type_t,
     int *, void *, int *);
-int nvlist_next(nvlist_t *);
-int nvlist_add_string(nvlist_t *, const char *, const char *);
+nvp_header_t *nvlist_next_nvpair(nvlist_t *, nvp_header_t *);
+
+int nvlist_add_boolean(nvlist_t *, const char *);
+int nvlist_add_boolean_value(nvlist_t *, const char *, boolean_t);
+int nvlist_add_byte(nvlist_t *, const char *, uint8_t);
+int nvlist_add_int8(nvlist_t *, const char *, int8_t);
+int nvlist_add_uint8(nvlist_t *, const char *, uint8_t);
+int nvlist_add_int16(nvlist_t *, const char *, int16_t);
+int nvlist_add_uint16(nvlist_t *, const char *, uint16_t);
+int nvlist_add_int32(nvlist_t *, const char *, int32_t);
+int nvlist_add_uint32(nvlist_t *, const char *, uint32_t);
+int nvlist_add_int64(nvlist_t *, const char *, int64_t);
 int nvlist_add_uint64(nvlist_t *, const char *, uint64_t);
+int nvlist_add_string(nvlist_t *, const char *, const char *);
+int nvlist_add_boolean_array(nvlist_t *, const char *, boolean_t *, uint32_t);
+int nvlist_add_byte_array(nvlist_t *, const char *, uint8_t *, uint32_t);
+int nvlist_add_int8_array(nvlist_t *, const char *, int8_t *, uint32_t);
+int nvlist_add_uint8_array(nvlist_t *, const char *, uint8_t *, uint32_t);
+int nvlist_add_int16_array(nvlist_t *, const char *, int16_t *, uint32_t);
+int nvlist_add_uint16_array(nvlist_t *, const char *, uint16_t *, uint32_t);
+int nvlist_add_int32_array(nvlist_t *, const char *, int32_t *, uint32_t);
+int nvlist_add_uint32_array(nvlist_t *, const char *, uint32_t *, uint32_t);
+int nvlist_add_int64_array(nvlist_t *, const char *, int64_t *, uint32_t);
+int nvlist_add_uint64_array(nvlist_t *, const char *, uint64_t *, uint32_t);
+int nvlist_add_string_array(nvlist_t *, const char *, char * const *, uint32_t);
+int nvlist_add_nvlist(nvlist_t *, const char *, nvlist_t *);
+int nvlist_add_nvlist_array(nvlist_t *, const char *, nvlist_t **, uint32_t);
 
 int	zfs_parsedev(struct zfs_devdesc *dev, const char *devspec,
 		     const char **path);
 char	*zfs_fmtdev(void *vdev);
+int	zfs_probe_dev(const char *devname, uint64_t *pool_guid);
+int	zfs_list(const char *name);
 int	zfs_get_bootonce(void *, const char *, char *, size_t);
 int	zfs_get_bootenv(void *, nvlist_t **);
 int	zfs_set_bootenv(void *, nvlist_t *);
-int	zfs_probe_dev(const char *devname, uint64_t *pool_guid);
-int	zfs_list(const char *name);
+int	zfs_attach_nvstore(void *);
 uint64_t ldi_get_size(void *);
+
 void	init_zfs_bootenv(const char *currdev);
 int	zfs_bootenv(const char *name);
+int	zfs_attach_nvstore(void *);
 int	zfs_belist_add(const char *name, uint64_t __unused);
 int	zfs_set_env(void);
 

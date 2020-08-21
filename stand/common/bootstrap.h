@@ -345,6 +345,26 @@ void	delay(int delay);
 
 void	dev_cleanup(void);
 
+/*
+ * nvstore API.
+ */
+typedef int (nvstore_getter_cb_t)(void *, const char *, void **);
+typedef int (nvstore_setter_cb_t)(void *, const char *, const void *, size_t);
+typedef int (nvstore_unset_cb_t)(void *, const char *);
+typedef int (nvstore_print_cb_t)(void *, void *);
+typedef int (nvstore_iterate_cb_t)(void *, int (*)(void *, void *));
+
+typedef struct nvs_callbacks {
+	nvstore_getter_cb_t	*nvs_getter;
+	nvstore_setter_cb_t	*nvs_setter;
+	nvstore_unset_cb_t	*nvs_unset;
+	nvstore_print_cb_t	*nvs_print;
+	nvstore_iterate_cb_t	*nvs_iterate;
+} nvs_callbacks_t;
+
+int nvstore_init(const char *, nvs_callbacks_t *, void *);
+int nvstore_fini(const char *);
+
 #ifndef CTASSERT
 #define	CTASSERT(x)	_Static_assert(x, "compile-time assertion failed")
 #endif

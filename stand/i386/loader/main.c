@@ -330,6 +330,7 @@ extract_currdev(void)
 				setenv("zfs-bootonce", bootonce, 1);
 			}
 			free(bootonce);
+			(void) zfs_attach_nvstore(&new_currdev);
 		}
 
 #endif

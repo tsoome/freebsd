@@ -283,6 +283,7 @@ probe_zfs_currdev(uint64_t guid)
 				setenv("zfs-bootonce", buf, 1);
 			}
 			free(buf);
+			(void) zfs_attach_nvstore(&currdev);
 		}
 	}
 	return (rv);

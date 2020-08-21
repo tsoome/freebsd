@@ -38,9 +38,12 @@ extern "C" {
 #define FREEBSD_BOOTONCE_USED	BE_FREEBSD_VENDOR ":" "bootonce-used"
 #define ILLUMOS_BOOTONCE	BE_ILLUMOS_VENDOR ":" "bootonce"
 #define ILLUMOS_BOOTONCE_USED	BE_ILLUMOS_VENDOR ":" "bootonce-used"
+#define	FREEBSD_NVSTORE		BE_FREEBSD_VENDOR ":" "nvstore"
+#define	ILLUMOS_NVSTORE		BE_ILLUMOS_VENDOR ":" "nvstore"
 
 #define OS_BOOTONCE		BOOTENV_OS ":" "bootonce"
 #define OS_BOOTONCE_USED	BOOTENV_OS ":" "bootonce-used"
+#define	OS_NVSTORE		BOOTENV_OS ":" "nvstore"
 
 #ifdef __cplusplus
 }

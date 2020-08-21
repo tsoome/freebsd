@@ -1094,7 +1094,7 @@ static int
 vdev_from_nvlist(spa_t *spa, uint64_t top_guid, const nvlist_t *nvlist)
 {
 	vdev_t *top_vdev, *vdev;
-	nvlist_t *kids = NULL;
+	nvlist_t **kids = NULL;
 	int rc, nkids;
 
 	/* Get top vdev. */
@@ -1115,27 +1115,18 @@ vdev_from_nvlist(spa_t *spa, uint64_t top_guid, const nvlist_t *nvlist)
 		for (int i = 0; i < nkids; i++) {
 			uint64_t guid;
 
-			rc = nvlist_find(kids, ZPOOL_CONFIG_GUID,
+			rc = nvlist_find(kids[i], ZPOOL_CONFIG_GUID,
 			    DATA_TYPE_UINT64, NULL, &guid, NULL);
-			if (rc != 0) {
-				nvlist_destroy(kids);
-				return (rc);
-			}
-			rc = vdev_init(guid, kids, &vdev);
-			if (rc != 0) {
-				nvlist_destroy(kids);
-				return (rc);
-			}
+			if (rc != 0)
+				goto done;
+
+			rc = vdev_init(guid, kids[i], &vdev);
+			if (rc != 0)
+				goto done;
 
 			vdev->v_spa = spa;
 			vdev->v_top = top_vdev;
 			vdev_insert(top_vdev, vdev);
-
-			rc = nvlist_next(kids);
-			if (rc != 0) {
-				nvlist_destroy(kids);
-				return (rc);
-			}
 		}
 	} else {
 		/*
@@ -1144,7 +1135,12 @@ vdev_from_nvlist(spa_t *spa, uint64_t top_guid, const nvlist_t *nvlist)
 		 */
 		rc = 0;
 	}
-	nvlist_destroy(kids);
+done:
+	if (kids != NULL) {
+		for (int i = 0; i < nkids; i++)
+			nvlist_destroy(kids[i]);
+		free(kids);
+	}
 
 	return (rc);
 }
@@ -1220,7 +1216,7 @@ static int
 vdev_update_from_nvlist(uint64_t top_guid, const nvlist_t *nvlist)
 {
 	vdev_t *vdev;
-	nvlist_t *kids = NULL;
+	nvlist_t **kids = NULL;
 	int rc, nkids;
 
 	/* Update top vdev. */
@@ -1235,23 +1231,23 @@ vdev_update_from_nvlist(uint64_t top_guid, const nvlist_t *nvlist)
 		for (int i = 0; i < nkids; i++) {
 			uint64_t guid;
 
-			rc = nvlist_find(kids, ZPOOL_CONFIG_GUID,
+			rc = nvlist_find(kids[i], ZPOOL_CONFIG_GUID,
 			    DATA_TYPE_UINT64, NULL, &guid, NULL);
 			if (rc != 0)
 				break;
 
 			vdev = vdev_find(guid);
 			if (vdev != NULL)
-				vdev_set_initial_state(vdev, kids);
-
-			rc = nvlist_next(kids);
-			if (rc != 0)
-				break;
+				vdev_set_initial_state(vdev, kids[i]);
 		}
 	} else {
 		rc = 0;
 	}
-	nvlist_destroy(kids);
+	if (kids != NULL) {
+		for (int i = 0; i < nkids; i++)
+			nvlist_destroy(kids[i]);
+		free(kids);
+	}
 
 	return (rc);
 }
@@ -1260,7 +1256,7 @@ static int
 vdev_init_from_nvlist(spa_t *spa, const nvlist_t *nvlist)
 {
 	uint64_t pool_guid, vdev_children;
-	nvlist_t *vdevs = NULL, *kids = NULL;
+	nvlist_t *vdevs = NULL, **kids = NULL;
 	int rc, nkids;
 
 	if (nvlist_find(nvlist, ZPOOL_CONFIG_POOL_GUID, DATA_TYPE_UINT64,
@@ -1295,7 +1291,7 @@ vdev_init_from_nvlist(spa_t *spa, const nvlist_t *nvlist)
 		uint64_t guid;
 		vdev_t *vdev;
 
-		rc = nvlist_find(kids, ZPOOL_CONFIG_GUID, DATA_TYPE_UINT64,
+		rc = nvlist_find(kids[i], ZPOOL_CONFIG_GUID, DATA_TYPE_UINT64,
 		    NULL, &guid, NULL);
 		if (rc != 0)
 			break;
@@ -1304,16 +1300,17 @@ vdev_init_from_nvlist(spa_t *spa, const nvlist_t *nvlist)
 		 * Top level vdev is missing, create it.
 		 */
 		if (vdev == NULL)
-			rc = vdev_from_nvlist(spa, guid, kids);
+			rc = vdev_from_nvlist(spa, guid, kids[i]);
 		else
-			rc = vdev_update_from_nvlist(guid, kids);
-		if (rc != 0)
-			break;
-		rc = nvlist_next(kids);
+			rc = vdev_update_from_nvlist(guid, kids[i]);
 		if (rc != 0)
 			break;
 	}
-	nvlist_destroy(kids);
+	if (kids != NULL) {
+		for (int i = 0; i < nkids; i++)
+			nvlist_destroy(kids[i]);
+		free(kids);
+	}
 
 	/*
 	 * Re-evaluate top-level vdev state.
@@ -1815,6 +1812,11 @@ vdev_read_bootenv(vdev_t *vdev)
 		 */
 		benv = nvlist_create(NV_UNIQUE_NAME);
 		if (benv != NULL) {
+			if (*be->vbe_bootenv == '\0') {
+				nvlist_add_uint64(benv, BOOTENV_VERSION,
+				    VB_NVLIST);
+				break;
+			}
 			nvlist_add_uint64(benv, BOOTENV_VERSION, VB_RAW);
 			be->vbe_bootenv[sizeof (be->vbe_bootenv) - 1] = '\0';
 			nvlist_add_string(benv, GRUB_ENVMAP, be->vbe_bootenv);
@@ -1822,7 +1824,7 @@ vdev_read_bootenv(vdev_t *vdev)
 		break;
 
 	case VB_NVLIST:
-		benv = nvlist_import(be->vbe_bootenv);
+		benv = nvlist_import(be->vbe_bootenv, sizeof(be->vbe_bootenv));
 		break;
 
 	default:
@@ -1885,7 +1887,7 @@ vdev_get_label_asize(nvlist_t *nvl)
 		goto done;
 
 	if (memcmp(type, VDEV_TYPE_RAIDZ, len) == 0) {
-		nvlist_t *kids;
+		nvlist_t **kids;
 		int nkids;
 
 		if (nvlist_find(vdevs, ZPOOL_CONFIG_CHILDREN,
@@ -1895,7 +1897,9 @@ vdev_get_label_asize(nvlist_t *nvl)
 		}
 
 		asize /= nkids;
-		nvlist_destroy(kids);
+		for (int i = 0; i < nkids; i++)
+			nvlist_destroy(kids[i]);
+		free(kids);
 	}
 
 	asize += VDEV_LABEL_START_SIZE + VDEV_LABEL_END_SIZE;
@@ -1924,7 +1928,8 @@ vdev_label_read_config(vdev_t *vd, uint64_t txg)
 		    sizeof (vdev_phys_t)))
 			continue;
 
-		tmp = nvlist_import(label->vp_nvlist);
+		tmp = nvlist_import(label->vp_nvlist,
+		    sizeof(label->vp_nvlist));
 		if (tmp == NULL)
 			continue;
 
@@ -3419,7 +3424,7 @@ load_nvlist(spa_t *spa, uint64_t obj, nvlist_t **value)
 		nv = NULL;
 		return (rc);
 	}
-	*value = nvlist_import(nv);
+	*value = nvlist_import(nv, size);
 	free(nv);
 	return (rc);
 }
