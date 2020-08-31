@@ -570,6 +570,9 @@ nvlist_next_nvpair(nvlist_t *nvl, nvp_header_t *nvh)
 	unsigned encoded_size, decoded_size;
 	xdr_t xdr;
 
+	if (nvl == NULL)
+		return (NULL);
+
 	xdr.xdr_buf = nvl->nv_data;
 	xdr.xdr_idx = nvl->nv_data;
 	xdr.xdr_buf_size = nvl->nv_size;
@@ -1246,12 +1249,6 @@ nvlist_add_common(nvlist_t *nvl, const char *name, data_type_t type,
 }
 
 int
-nvlist_add_boolean(nvlist_t *nvl, const char *name)
-{
-	return (nvlist_add_common(nvl, name, DATA_TYPE_BOOLEAN, 0, NULL));
-}
-
-int
 nvlist_add_boolean_value(nvlist_t *nvl, const char *name, boolean_t value)
 {
 	return (nvlist_add_common(nvl, name, DATA_TYPE_BOOLEAN_VALUE, 1,
@@ -1432,6 +1429,35 @@ static const char *typenames[] = {
 	"DATA_TYPE_UINT8_ARRAY"
 };
 
+int
+nvpair_type_from_name(const char *name)
+{
+	unsigned i;
+
+	for (i = 0; i < nitems(typenames); i++) {
+		if (strcmp(name, typenames[i]) == 0)
+			return (i);
+	}
+	return (0);
+}
+
+nvp_header_t *
+nvpair_find(nvlist_t *nv, const char *name)
+{
+	nvp_header_t *nvh;
+
+	nvh = NULL;
+	while ((nvh = nvlist_next_nvpair(nv, nvh)) != NULL) {
+		nv_string_t *nvp_name;
+
+		nvp_name = (nv_string_t *)(nvh + 1);
+		if (nvp_name->nv_size == strlen(name) &&
+		    memcmp(nvp_name->nv_data, name, nvp_name->nv_size) == 0)
+			break;
+	}
+	return (nvh);
+}
+
 void
 nvpair_print(nvp_header_t *nvp, unsigned int indent)
 {
@@ -1452,13 +1478,29 @@ nvpair_print(nvp_header_t *nvp, unsigned int indent)
 	    nvp_data->nv_nelem, nvp_name->nv_size, nvp_name->nv_data);
 
 	switch (nvp_data->nv_type) {
-	case DATA_TYPE_UINT64: {
-		uint64_t val;
-
-		val = *(uint64_t *)nvp_data->nv_data;
-		printf(" = 0x%jx\n", (uintmax_t)val);
+	case DATA_TYPE_BYTE:
+	case DATA_TYPE_INT8:
+	case DATA_TYPE_UINT8:
+		printf(" = 0x%x\n",
+		    (unsigned char)*(uint32_t *)nvp_data->nv_data);
 		break;
-	}
+
+	case DATA_TYPE_INT16:
+	case DATA_TYPE_UINT16:
+		printf(" = 0x%hx\n",
+		    (unsigned short)*(uint32_t *)nvp_data->nv_data);
+		break;
+
+	case DATA_TYPE_BOOLEAN_VALUE:
+	case DATA_TYPE_INT32:
+	case DATA_TYPE_UINT32:
+		printf(" = 0x%x\n", *(uint32_t *)nvp_data->nv_data);
+		break;
+
+	case DATA_TYPE_INT64:
+	case DATA_TYPE_UINT64:
+		printf(" = 0x%jx\n", (uintmax_t)*(uint64_t *)nvp_data->nv_data);
+		break;
 
 	case DATA_TYPE_STRING:
 	case DATA_TYPE_STRING_ARRAY:

@@ -790,8 +790,12 @@ zfs_get_bootonce(void *vdev, const char *key, char *buf, size_t size)
  * nvstore backend.
  */
 
-static int zfs_nvstore_setter(void *, const char *, const void *, size_t);
+static int zfs_nvstore_setter(void *, int, const char *,
+    const void *, size_t);
+static int zfs_nvstore_setter_str(void *, const char *, const char *,
+    const char *);
 static int zfs_nvstore_unset_impl(void *, const char *, bool);
+static int zfs_nvstore_setenv(void *, void *);
 
 /*
  * nvstore is only present for current rootfs pool.
@@ -806,7 +810,7 @@ zfs_nvstore_sethook(struct env_var *ev, int flags __unused, const void *value)
 	if (dev == NULL)
 		return (ENXIO);
 
-	rv = zfs_nvstore_setter(dev, ev->ev_name, value, strlen(value));
+	rv = zfs_nvstore_setter_str(dev, NULL, ev->ev_name, value);
 
 	free(dev);
 	return (rv);
@@ -866,13 +870,14 @@ zfs_nvstore_getter(void *vdev, const char *name, void **data)
 }
 
 static int
-zfs_nvstore_setter(void *vdev, const char *name, const void *data,
-    size_t size __unused)
+zfs_nvstore_setter(void *vdev, int type, const char *name,
+    const void *data, size_t size)
 {
 	struct zfs_devdesc *dev = (struct zfs_devdesc *)vdev;
 	spa_t *spa;
 	nvlist_t *nv;
 	int rv;
+	bool env_set = true;
 
 	if (dev->dd.d_dev->dv_type != DEVT_ZFS)
 		return (ENOTSUP);
@@ -890,16 +895,321 @@ zfs_nvstore_setter(void *vdev, const char *name, const void *data,
 			return (ENOMEM);
 	}
 
-	rv = nvlist_add_string(nv, name, data);
+	rv = 0;
+	switch (type) {
+        case DATA_TYPE_INT8:
+		if (size != sizeof (int8_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_int8(nv, name, *(int8_t *)data);
+		break;
+
+        case DATA_TYPE_INT16:
+		if (size != sizeof (int16_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_int16(nv, name, *(int16_t *)data);
+		break;
+
+        case DATA_TYPE_INT32:
+		if (size != sizeof (int32_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_int32(nv, name, *(int32_t *)data);
+		break;
+
+        case DATA_TYPE_INT64:
+		if (size != sizeof (int64_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_int64(nv, name, *(int64_t *)data);
+		break;
+
+        case DATA_TYPE_BYTE:
+		if (size != sizeof (uint8_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_byte(nv, name, *(int8_t *)data);
+		break;
+
+        case DATA_TYPE_UINT8:
+		if (size != sizeof (uint8_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_uint8(nv, name, *(int8_t *)data);
+		break;
+
+        case DATA_TYPE_UINT16:
+		if (size != sizeof (uint16_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_uint16(nv, name, *(uint16_t *)data);
+		break;
+
+        case DATA_TYPE_UINT32:
+		if (size != sizeof (uint32_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_uint32(nv, name, *(uint32_t *)data);
+		break;
+
+        case DATA_TYPE_UINT64:
+		if (size != sizeof (uint64_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_uint64(nv, name, *(uint64_t *)data);
+		break;
+
+        case DATA_TYPE_STRING:
+		rv = nvlist_add_string(nv, name, data);
+		break;
+
+	case DATA_TYPE_BOOLEAN_VALUE:
+		if (size != sizeof (boolean_t)) {
+			rv = EINVAL;
+			break;
+		}
+		rv = nvlist_add_boolean_value(nv, name, *(boolean_t *)data);
+		break;
+
+	default:
+		rv = EINVAL;
+		break;
+	}
+
 	if (rv == 0) {
 		rv = nvlist_add_nvlist(spa->spa_bootenv, OS_NVSTORE, nv);
-		if (rv == 0)
+		if (rv == 0) {
 			rv = zfs_set_bootenv(vdev, spa->spa_bootenv);
+		}
+		if (rv == 0) {
+			if (env_set) {
+				rv = zfs_nvstore_setenv(vdev,
+				    nvpair_find(nv, name));
+			} else {
+				env_discard(env_getenv(name));
+				rv = 0;
+			}
+		}
+	}
+
+	nvlist_destroy(nv);
+	return (rv);
+}
+
+static int
+get_int64(const char *data, int64_t *ip)
+{
+	char *end;
+	int64_t val;
+
+	errno = 0;
+	val = strtoll(data, &end, 0);
+	if (errno != 0 || *data == '\0' || *end != '\0')
+		return (EINVAL);
+
+	*ip = val;
+	return (0);
+}
+
+static int
+get_uint64(const char *data, uint64_t *ip)
+{
+	char *end;
+	uint64_t val;
+
+	errno = 0;
+	val = strtoull(data, &end, 0);
+	if (errno != 0 || *data == '\0' || *end != '\0')
+		return (EINVAL);
+
+	*ip = val;
+	return (0);
+}
+
+/*
+ * Translate textual data to data type. If type is not set, and we are
+ * creating new pair, use DATA_TYPE_STRING.
+ */
+static int
+zfs_nvstore_setter_str(void *vdev, const char *type, const char *name,
+    const char *data)
+{
+	struct zfs_devdesc *dev = (struct zfs_devdesc *)vdev;
+	spa_t *spa;
+	nvlist_t *nv;
+	int rv;
+	data_type_t dt;
+	int64_t val;
+	uint64_t uval;
+
+	if (dev->dd.d_dev->dv_type != DEVT_ZFS)
+		return (ENOTSUP);
+
+	if ((spa = spa_find_by_dev(dev)) == NULL)
+		return (ENXIO);
+
+	if (spa->spa_bootenv == NULL)
+		return (ENXIO);
+
+	if (nvlist_find(spa->spa_bootenv, OS_NVSTORE, DATA_TYPE_NVLIST,
+	    NULL, &nv, NULL) != 0) {
+		nv = NULL;
+	}
+
+	if (type == NULL) {
+		nvp_header_t *nvh;
+
+		/*
+		 * if there is no existing pair, default to string.
+		 * Otherwise, use type from existing pair.
+		 */
+		nvh = nvpair_find(nv, name);
+		if (nvh == NULL) {
+			dt = DATA_TYPE_STRING;
+		} else {
+			nv_string_t *nvp_name;
+			nv_pair_data_t *nvp_data;
+
+			nvp_name = (nv_string_t *)(nvh + 1);
+			nvp_data = (nv_pair_data_t *)(&nvp_name->nv_data[0] +
+			    NV_ALIGN4(nvp_name->nv_size));
+			dt = nvp_data->nv_type;
+		}
+	} else {
+		dt = nvpair_type_from_name(type);
 	}
 	nvlist_destroy(nv);
-	rv = env_setenv(name, EV_VOLATILE | EV_NOHOOK, data,
-	    zfs_nvstore_sethook, zfs_nvstore_unsethook);
 
+	rv = 0;
+	switch (dt) {
+        case DATA_TYPE_INT8:
+		rv = get_int64(data, &val);
+		if (rv == 0) {
+			int8_t v = val;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+        case DATA_TYPE_INT16:
+		rv = get_int64(data, &val);
+		if (rv == 0) {
+			int16_t v = val;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+        case DATA_TYPE_INT32:
+		rv = get_int64(data, &val);
+		if (rv == 0) {
+			int32_t v = val;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+        case DATA_TYPE_INT64:
+		rv = get_int64(data, &val);
+		if (rv == 0) {
+			rv = zfs_nvstore_setter(vdev, dt, name, &val,
+			    sizeof (val));
+		}
+		break;
+
+        case DATA_TYPE_BYTE:
+		rv = get_uint64(data, &uval);
+		if (rv == 0) {
+			uint8_t v = uval;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+
+        case DATA_TYPE_UINT8:
+		rv = get_uint64(data, &uval);
+		if (rv == 0) {
+			uint8_t v = uval;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+
+        case DATA_TYPE_UINT16:
+		rv = get_uint64(data, &uval);
+		if (rv == 0) {
+			uint16_t v = uval;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+
+        case DATA_TYPE_UINT32:
+		rv = get_uint64(data, &uval);
+		if (rv == 0) {
+			uint32_t v = uval;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+
+        case DATA_TYPE_UINT64:
+		rv = get_uint64(data, &uval);
+		if (rv == 0) {
+			rv = zfs_nvstore_setter(vdev, dt, name, &uval,
+			    sizeof (uval));
+		}
+		break;
+
+        case DATA_TYPE_STRING:
+		rv = zfs_nvstore_setter(vdev, dt, name, data, strlen(data) + 1);
+		break;
+
+	case DATA_TYPE_BOOLEAN:
+		rv = get_int64(data, &val);
+		if (rv != 0) {
+			if (strcasecmp(data, "yes") == 0) {
+				rv = 0;
+				val = true;
+			}
+			if (strcasecmp(data, "no") == 0) {
+				rv = 0;
+				val = false;
+			}
+			if (strcasecmp(data, "on") == 0) {
+				rv = 0;
+				val = true;
+			}
+			if (strcasecmp(data, "off") == 0) {
+				rv = 0;
+				val = false;
+			}
+		}
+		if (rv == 0) {
+			int v = val;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+		break;
+
+	case DATA_TYPE_BOOLEAN_VALUE:
+		rv = get_int64(data, &val);
+		if (rv == 0) {
+			boolean_t v = val;
+
+			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
+		}
+
+	default:
+		rv = EINVAL;
+	}
 	return (rv);
 }
 
@@ -958,7 +1268,6 @@ zfs_nvstore_print(void *vdev __unused, void *ptr)
 
 /*
  * Create environment variable from nvpair.
- * At this time, we only support DATA_TYPE_STRING.
  * set hook will update nvstore with new value, unset hook will remove
  * variable from nvstore.
  */
@@ -971,27 +1280,98 @@ zfs_nvstore_setenv(void *vdev __unused, void *ptr)
 	char *name, *value;
 	int rv = 0;
 
+	if (nvh == NULL)
+		return (ENOENT);
+
 	nvp_name = (nv_string_t *)(nvh + 1);
 	nvp_data = (nv_pair_data_t *)(&nvp_name->nv_data[0] +
-	NV_ALIGN4(nvp_name->nv_size));
+	    NV_ALIGN4(nvp_name->nv_size));
 
+	if ((name = nvstring_get(nvp_name)) == NULL)
+		return (ENOMEM);
+
+	value = NULL;
 	switch (nvp_data->nv_type) {
+	case DATA_TYPE_BOOLEAN:
+		value = strdup("YES");
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_BYTE:
+	case DATA_TYPE_UINT8:
+		(void) asprintf(&value, "%uc",
+		    *(unsigned *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_INT8:
+		(void) asprintf(&value, "%c", *(int *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_INT16:
+		(void) asprintf(&value, "%hd", *(short *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_UINT16:
+		(void) asprintf(&value, "%hu",
+		    *(unsigned short *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_BOOLEAN_VALUE:
+	case DATA_TYPE_INT32:
+		(void) asprintf(&value, "%d", *(int *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_UINT32:
+		(void) asprintf(&value, "%u",
+		    *(unsigned *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_INT64:
+		(void) asprintf(&value, "%jd",
+		    (intmax_t)*(int64_t *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
+	case DATA_TYPE_UINT64:
+		(void) asprintf(&value, "%ju",
+		    (uintmax_t)*(uint64_t *)&nvp_data->nv_data[0]);
+		if (value == NULL)
+			rv = ENOMEM;
+		break;
+
 	case DATA_TYPE_STRING:
 		nvp_value = (nv_string_t *)&nvp_data->nv_data[0];
-		if ((name = nvstring_get(nvp_name)) == NULL)
-			return (ENOMEM);
 		if ((value = nvstring_get(nvp_value)) == NULL) {
-			free(name);
-			return (ENOMEM);
+			rv = ENOMEM;
+			break;
 		}
-		rv = env_setenv(name, EV_VOLATILE | EV_NOHOOK, value,
-		    zfs_nvstore_sethook, zfs_nvstore_unsethook);
-		free(name);
-		free(value);
 		break;
+
 	default:
+		rv = EINVAL;
 		break;
 	}
+
+	if (value != NULL) {
+		rv = env_setenv(name, EV_VOLATILE | EV_NOHOOK, value,
+		    zfs_nvstore_sethook, zfs_nvstore_unsethook);
+		free(value);
+	}
+	free(name);
 	return (rv);
 }
 
@@ -1024,12 +1404,13 @@ zfs_nvstore_iterate(void *vdev, int (*cb)(void *, void *))
 		if (rv != 0)
 			break;
 	}
-	return (0);
+	return (rv);
 }
 
 nvs_callbacks_t nvstore_zfs_cb = {
 	.nvs_getter = zfs_nvstore_getter,
 	.nvs_setter = zfs_nvstore_setter,
+	.nvs_setter_str = zfs_nvstore_setter_str,
 	.nvs_unset = zfs_nvstore_unset,
 	.nvs_print = zfs_nvstore_print,
 	.nvs_iterate = zfs_nvstore_iterate
@@ -1065,7 +1446,7 @@ zfs_attach_nvstore(void *vdev)
 	if (rv != 0)
 		free(dev);
 	else
-		(void) zfs_nvstore_iterate(dev, zfs_nvstore_setenv);
+		rv = zfs_nvstore_iterate(dev, zfs_nvstore_setenv);
 	return (rv);
 }
 

@@ -20,11 +20,14 @@
 extern "C" {
 #endif
 
-extern int lzbe_set_pair(const char *, const char *, const char *,
-    const char *);
+extern int lzbe_nvlist_get(const char *, const char *, void **);
+extern int lzbe_nvlist_set(const char *, const char *, void *);
+extern void lzbe_nvlist_free(void *);
+extern int lzbe_add_pair(void *, const char *, const char *, void *, size_t);
+extern int lzbe_remove_pair(void *, const char *);
 extern int lzbe_set_boot_device(const char *, const char *);
 extern int lzbe_get_boot_device(const char *, char **);
-extern int lzbe_bootenv_print(const char *, FILE *);
+extern int lzbe_bootenv_print(const char *, const char *, FILE *);
 
 #ifdef __cplusplus
 }

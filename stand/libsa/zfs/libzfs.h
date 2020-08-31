@@ -113,6 +113,8 @@ void nvlist_destroy(nvlist_t *);
 nvlist_t *nvlist_import(const char *, size_t);
 int nvlist_export(nvlist_t *);
 int nvlist_remove(nvlist_t *, const char *, data_type_t);
+int nvpair_type_from_name(const char *);
+nvp_header_t *nvpair_find(nvlist_t *, const char *);
 void nvpair_print(nvp_header_t *, unsigned int);
 void nvlist_print(const nvlist_t *, unsigned int);
 char *nvstring_get(nv_string_t *);
@@ -120,7 +122,6 @@ int nvlist_find(const nvlist_t *, const char *, data_type_t,
     int *, void *, int *);
 nvp_header_t *nvlist_next_nvpair(nvlist_t *, nvp_header_t *);
 
-int nvlist_add_boolean(nvlist_t *, const char *);
 int nvlist_add_boolean_value(nvlist_t *, const char *, boolean_t);
 int nvlist_add_byte(nvlist_t *, const char *, uint8_t);
 int nvlist_add_int8(nvlist_t *, const char *, int8_t);
@@ -157,6 +158,7 @@ int	zfs_set_bootenv(void *, nvlist_t *);
 int	zfs_attach_nvstore(void *);
 uint64_t ldi_get_size(void *);
 void	init_zfs_boot_options(const char *currdev);
+
 int	zfs_bootenv(const char *name);
 int	zfs_attach_nvstore(void *);
 int	zfs_belist_add(const char *name, uint64_t __unused);

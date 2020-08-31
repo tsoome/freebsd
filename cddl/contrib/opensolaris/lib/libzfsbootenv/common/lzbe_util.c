@@ -21,33 +21,19 @@
  * Output bootenv information.
  */
 int
-lzbe_bootenv_print(const char *pool, FILE *of)
+lzbe_bootenv_print(const char *pool, const char *nvlist, FILE *of)
 {
-	libzfs_handle_t *hdl;
-	zpool_handle_t *zphdl;
 	nvlist_t *nv;
 	int rv = -1;
 
 	if (pool == NULL || *pool == '\0' || of == NULL)
 		return (rv);
 
-	if ((hdl = libzfs_init()) == NULL) {
-		return (rv);
-	}
-
-	zphdl = zpool_open(hdl, pool);
-	if (zphdl == NULL) {
-		libzfs_fini(hdl);
-		return (rv);
-	}
-
-	rv = zpool_get_bootenv(zphdl, &nv);
+	rv = lzbe_nvlist_get(pool, nvlist, (void **)&nv);
 	if (rv == 0) {
 		nvlist_print(of, nv);
 		nvlist_free(nv);
 	}
 
-	zpool_close(zphdl);
-	libzfs_fini(hdl);
 	return (rv);
 }

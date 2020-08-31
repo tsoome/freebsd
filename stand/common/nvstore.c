@@ -64,7 +64,7 @@ typedef STAILQ_HEAD(store_list, nvstore) nvstore_list_t;
 
 nvstore_list_t stores = STAILQ_HEAD_INITIALIZER(stores);
 
-static nvstore_t *
+void *
 nvstore_get_store(const char *name)
 {
 	nvstore_t *st;
@@ -121,29 +121,43 @@ nvstore_fini(const char *name)
 }
 
 int
-nvstore_print(nvstore_t *st)
+nvstore_print(void *ptr)
 {
+	nvstore_t *st = ptr;
 
 	return (st->nvs_cb->nvs_iterate(st->nvs_data, st->nvs_cb->nvs_print));
 }
 
 int
-nvstore_get_var(nvstore_t *st, const char *name, void **data)
+nvstore_get_var(void *ptr, const char *name, void **data)
 {
+	nvstore_t *st = ptr;
 
 	return (st->nvs_cb->nvs_getter(st->nvs_data, name, data));
 }
 
 int
-nvstore_set_var(nvstore_t *st, const char *name, void *data, size_t size)
+nvstore_set_var(void *ptr, int type, const char *name,
+    void *data, size_t size)
 {
+	nvstore_t *st = ptr;
 
-	return (st->nvs_cb->nvs_setter(st->nvs_data, name, data, size));
+	return (st->nvs_cb->nvs_setter(st->nvs_data, type, name, data, size));
 }
 
 int
-nvstore_unset_var(nvstore_t *st, const char *name)
+nvstore_set_var_from_string(void *ptr, const char *type, const char *name,
+    const char *data)
 {
+	nvstore_t *st = ptr;
+
+	return (st->nvs_cb->nvs_setter_str(st->nvs_data, type, name, data));
+}
+
+int
+nvstore_unset_var(void *ptr, const char *name)
+{
+	nvstore_t *st = ptr;
 
 	return (st->nvs_cb->nvs_unset(st->nvs_data, name));
 }
@@ -155,7 +169,7 @@ nvstore_usage(const char *me)
 {
 	printf("Usage:\t%s -l\n", me);
 	printf("\t%s store -l\n", me);
-	printf("\t%s store [-t type] key=value\n", me);
+	printf("\t%s store [-t type] key value\n", me);
 	printf("\t%s store -g key\n", me);
 	printf("\t%s store -d key\n", me);
 }
@@ -163,7 +177,7 @@ nvstore_usage(const char *me)
 /*
  * Usage: nvstore -l		# list stores
  *	nvstore store -l	# list data in store
- *	nvstore store [-t type] key=value
+ *	nvstore store [-t type] key value
  *	nvstore store -g key	# get value
  *	nvstore store -d key	# delete key
  */
@@ -173,7 +187,7 @@ command_nvstore(int argc, char *argv[])
 	int c;
 	bool list, get, delete;
 	nvstore_t *st;
-	char *me, *name;
+	char *me, *name, *type;
 
 	me = argv[0];
 	optind = 1;
@@ -224,9 +238,10 @@ command_nvstore(int argc, char *argv[])
 	optind = 1;
 	optreset = 1;
 	name = NULL;
+	type = NULL;
 	get = delete = false;
 
-	while ((c = getopt(argc, argv, "d:g:l")) != -1) {
+	while ((c = getopt(argc, argv, "d:g:lt:")) != -1) {
 		switch (c) {
 		case 'd':
 			if (list || get) {
@@ -250,6 +265,9 @@ command_nvstore(int argc, char *argv[])
 				return (CMD_ERROR);
 			}
 			list = true;
+			break;
+		case 't':
+			type = optarg;
 			break;
 		case '?':
 		default:
@@ -279,10 +297,11 @@ command_nvstore(int argc, char *argv[])
 	}
 
 	if (argc == 2) {
-		c = nvstore_set_var(st, argv[0], argv[1],
-		    strlen(argv[1]) + 1);
-		if (c != 0)
-			printf("error: %d\n", c);
+		c = nvstore_set_var_from_string(st, type, argv[0], argv[1]);
+		if (c != 0) {
+			printf("error: %s\n", strerror(c));
+			return (CMD_ERROR);
+		}
 		return (CMD_OK);
 	}
 
