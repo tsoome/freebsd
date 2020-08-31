@@ -34,14 +34,6 @@
 #ifndef _SYS_IOMMU_H_
 #define _SYS_IOMMU_H_
 
-#include <sys/types.h>
-#include <sys/queue.h>
-#include <sys/sysctl.h>
-#include <sys/taskqueue.h>
-#include <sys/tree.h>
-
-#include <dev/pci/pcireg.h>
-
 /* Host or physical memory address, after translation. */
 typedef uint64_t iommu_haddr_t;
 /* Guest or bus address, before translation. */
@@ -108,6 +100,13 @@ struct iommu_unit {
 	uint32_t buswide_ctxs[(PCI_BUSMAX + 1) / NBBY / sizeof(uint32_t)];
 };
 
+struct iommu_domain_map_ops {
+	int (*map)(struct iommu_domain *domain, iommu_gaddr_t base,
+	    iommu_gaddr_t size, vm_page_t *ma, uint64_t pflags, int flags);
+	int (*unmap)(struct iommu_domain *domain, iommu_gaddr_t base,
+	    iommu_gaddr_t size, int flags);
+};
+
 /*
  * Locking annotations:
  * (u) - Protected by iommu unit lock
@@ -117,6 +116,7 @@ struct iommu_unit {
 
 struct iommu_domain {
 	struct iommu_unit *iommu;	/* (c) */
+	const struct iommu_domain_map_ops *ops;
 	struct mtx lock;		/* (c) */
 	struct task unload_task;	/* (c) */
 	u_int entries_cnt;		/* (d) */
@@ -223,6 +223,9 @@ int iommu_gas_reserve_region(struct iommu_domain *domain, iommu_gaddr_t start,
 
 void iommu_set_buswide_ctx(struct iommu_unit *unit, u_int busno);
 bool iommu_is_buswide_ctx(struct iommu_unit *unit, u_int busno);
+void iommu_domain_init(struct iommu_unit *unit, struct iommu_domain *domain,
+    const struct iommu_domain_map_ops *ops);
+void iommu_domain_fini(struct iommu_domain *domain);
 
 bool bus_dma_iommu_set_buswide(device_t dev);
 int bus_dma_iommu_load_ident(bus_dma_tag_t dmat, bus_dmamap_t map,

@@ -156,8 +156,7 @@ int	zfs_get_bootenv(void *, nvlist_t **);
 int	zfs_set_bootenv(void *, nvlist_t *);
 int	zfs_attach_nvstore(void *);
 uint64_t ldi_get_size(void *);
-
-void	init_zfs_bootenv(const char *currdev);
+void	init_zfs_boot_options(const char *currdev);
 int	zfs_bootenv(const char *name);
 int	zfs_attach_nvstore(void *);
 int	zfs_belist_add(const char *name, uint64_t __unused);
