@@ -30,6 +30,7 @@ __FBSDID("$FreeBSD$");
 #include <stdbool.h>
 #include <sys/endian.h>
 #include <sys/stdint.h>
+#include <sys/param.h>
 #include <zfsimpl.h>
 #include "libzfs.h"
 
@@ -883,8 +884,8 @@ nvlist_find(const nvlist_t *nvl, const char *name, data_type_t type,
 				*elementsp = nvp_data->nv_nelem;
 			switch (nvp_data->nv_type) {
 			case DATA_TYPE_UINT64:
-				*(uint64_t *)valuep =
-				    *(uint64_t *)nvp_data->nv_data;
+				bcopy(nvp_data->nv_data, valuep,
+				    sizeof (uint64_t));
 				return (0);
 			case DATA_TYPE_STRING:
 				nvp_name = (nv_string_t *)nvp_data->nv_data;
@@ -1465,7 +1466,8 @@ nvpair_print(nvp_header_t *nvp, unsigned int indent)
 	nv_pair_data_t *nvp_data;
 	nvlist_t nvlist;
 	xdr_t xdr;
-	unsigned i, j;
+	unsigned i, j, u;
+	uint64_t u64;
 
 	nvp_name = (nv_string_t *)((uintptr_t)nvp + sizeof (*nvp));
 	nvp_data = (nv_pair_data_t *)
@@ -1481,25 +1483,27 @@ nvpair_print(nvp_header_t *nvp, unsigned int indent)
 	case DATA_TYPE_BYTE:
 	case DATA_TYPE_INT8:
 	case DATA_TYPE_UINT8:
-		printf(" = 0x%x\n",
-		    (unsigned char)*(uint32_t *)nvp_data->nv_data);
+		bcopy(nvp_data->nv_data, &u, sizeof (u));
+		printf(" = 0x%x\n", (unsigned char)u);
 		break;
 
 	case DATA_TYPE_INT16:
 	case DATA_TYPE_UINT16:
-		printf(" = 0x%hx\n",
-		    (unsigned short)*(uint32_t *)nvp_data->nv_data);
+		bcopy(nvp_data->nv_data, &u, sizeof (u));
+		printf(" = 0x%hx\n", (unsigned short)u);
 		break;
 
 	case DATA_TYPE_BOOLEAN_VALUE:
 	case DATA_TYPE_INT32:
 	case DATA_TYPE_UINT32:
-		printf(" = 0x%x\n", *(uint32_t *)nvp_data->nv_data);
+		bcopy(nvp_data->nv_data, &u, sizeof (u));
+		printf(" = 0x%x\n", u);
 		break;
 
 	case DATA_TYPE_INT64:
 	case DATA_TYPE_UINT64:
-		printf(" = 0x%jx\n", (uintmax_t)*(uint64_t *)nvp_data->nv_data);
+		bcopy(nvp_data->nv_data, &u64, sizeof (u64));
+		printf(" = 0x%jx\n", (uintmax_t)u64);
 		break;
 
 	case DATA_TYPE_STRING:

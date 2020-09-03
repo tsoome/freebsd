@@ -1746,7 +1746,7 @@ vdev_write_bootenv(vdev_t *vdev, nvlist_t *nvl)
 		nv.nv_asize = nvl->nv_asize;
 		nv.nv_size = nvl->nv_size;
 
-		*(nvs_header_t *)be->vbe_bootenv = nv.nv_header;
+		bcopy(&nv.nv_header, be->vbe_bootenv, sizeof (nv.nv_header));
 		nv.nv_data = be->vbe_bootenv + sizeof(nvs_header_t);
 		bcopy(nvl->nv_data, nv.nv_data, nv.nv_size);
 		rv = nvlist_export(&nv);
