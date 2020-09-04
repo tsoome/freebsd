@@ -1172,33 +1172,6 @@ zfs_nvstore_setter_str(void *vdev, const char *type, const char *name,
 		rv = zfs_nvstore_setter(vdev, dt, name, data, strlen(data) + 1);
 		break;
 
-	case DATA_TYPE_BOOLEAN:
-		rv = get_int64(data, &val);
-		if (rv != 0) {
-			if (strcasecmp(data, "yes") == 0) {
-				rv = 0;
-				val = true;
-			}
-			if (strcasecmp(data, "no") == 0) {
-				rv = 0;
-				val = false;
-			}
-			if (strcasecmp(data, "on") == 0) {
-				rv = 0;
-				val = true;
-			}
-			if (strcasecmp(data, "off") == 0) {
-				rv = 0;
-				val = false;
-			}
-		}
-		if (rv == 0) {
-			int v = val;
-
-			rv = zfs_nvstore_setter(vdev, dt, name, &v, sizeof (v));
-		}
-		break;
-
 	case DATA_TYPE_BOOLEAN_VALUE:
 		rv = get_int64(data, &val);
 		if (rv == 0) {
@@ -1292,12 +1265,6 @@ zfs_nvstore_setenv(void *vdev __unused, void *ptr)
 
 	value = NULL;
 	switch (nvp_data->nv_type) {
-	case DATA_TYPE_BOOLEAN:
-		value = strdup("YES");
-		if (value == NULL)
-			rv = ENOMEM;
-		break;
-
 	case DATA_TYPE_BYTE:
 	case DATA_TYPE_UINT8:
 		(void) asprintf(&value, "%uc",
