@@ -52,7 +52,7 @@ lzbe_set_boot_device(const char *pool, const char *device)
 		 * We got the nvlist, check for version.
 		 * if version is missing or is not VB_NVLIST, create new list.
 		 */
-		rv = nvlist_lookup_int64(nv, BOOTENV_VERSION, &version);
+		rv = nvlist_lookup_uint64(nv, BOOTENV_VERSION, &version);
 		if (rv == 0 && version != VB_NVLIST)
 			rv = EINVAL;
 
