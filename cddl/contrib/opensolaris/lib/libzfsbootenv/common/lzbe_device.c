@@ -21,6 +21,8 @@
 
 /*
  * Store device name to zpool label bootenv area.
+ * This call will set bootenv version to VB_NVLIST, if bootenv currently
+ * does contain other version, then old data will be lost.
  */
 int
 lzbe_set_boot_device(const char *pool, const char *device)
@@ -29,14 +31,14 @@ lzbe_set_boot_device(const char *pool, const char *device)
 	zpool_handle_t *zphdl;
 	nvlist_t *nv;
 	char *descriptor;
+	uint64_t version;
 	int rv = -1;
 
 	if (pool == NULL || *pool == '\0')
 		return (rv);
 
-	if ((hdl = libzfs_init()) == NULL) {
+	if ((hdl = libzfs_init()) == NULL)
 		return (rv);
-	}
 
 	zphdl = zpool_open(hdl, pool);
 	if (zphdl == NULL) {
@@ -45,12 +47,24 @@ lzbe_set_boot_device(const char *pool, const char *device)
 	}
 
 	rv = zpool_get_bootenv(zphdl, &nv);
+	if (rv == 0) {
+		/*
+		 * We got the nvlist, check for version.
+		 * if version is missing or is not VB_NVLIST, create new list.
+		 */
+		rv = nvlist_lookup_int64(nv, BOOTENV_VERSION, &version);
+		if (rv == 0 && version != VB_NVLIST)
+			rv = EINVAL;
+
+		if (rv != 0)
+			fnvlist_free(nv);
+	}
+
 	if (rv != 0)
 		nv = fnvlist_alloc();
 
 	/* version is mandatory */
-	if (!nvlist_exists(nv, BOOTENV_VERSION))
-		fnvlist_add_uint64(nv, BOOTENV_VERSION, VB_NVLIST);
+	fnvlist_add_uint64(nv, BOOTENV_VERSION, VB_NVLIST);
 
 	/*
 	 * If device name is empty, remove boot device configuration.
@@ -100,9 +114,8 @@ lzbe_get_boot_device(const char *pool, char **device)
 	if (pool == NULL || *pool == '\0' || device == NULL)
 		return (rv);
 
-	if ((hdl = libzfs_init()) == NULL) {
+	if ((hdl = libzfs_init()) == NULL)
 		return (rv);
-	}
 
 	zphdl = zpool_open(hdl, pool);
 	if (zphdl == NULL) {
@@ -118,17 +131,20 @@ lzbe_get_boot_device(const char *pool, char **device)
 			 * zfs device descriptor is in form of "zfs:dataset:",
 			 * we only do need dataset name.
 			 */
-			if (strncmp(val, "zfs:", 4) == 0)
+			if (strncmp(val, "zfs:", 4) == 0) {
 				val += 4;
-			val = strdup(val);
-			if (val != NULL) {
-				size_t len = strlen(val);
+				val = strdup(val);
+				if (val != NULL) {
+					size_t len = strlen(val);
 
-				if (val[len - 1] == ':')
-					val[len - 1] = '\0';
-				*device = val;
+					if (val[len - 1] == ':')
+						val[len - 1] = '\0';
+					*device = val;
+				} else {
+					rv = ENOMEM;
+				}
 			} else {
-				rv = ENOMEM;
+				rv = EINVAL;
 			}
 		}
 		nvlist_free(nv);

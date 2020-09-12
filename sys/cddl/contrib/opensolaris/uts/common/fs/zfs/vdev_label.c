@@ -1094,11 +1094,6 @@ vdev_label_read_bootenv(vdev_t *rvd, nvlist_t *bootenv)
 			 * we have textual data in vbe_bootenv, create nvlist
 			 * with key "envmap".
 			 */
-			if (*vbe->vbe_bootenv == '\0') {
-				fnvlist_add_uint64(bootenv, BOOTENV_VERSION,
-				    VB_NVLIST);
-				break;
-			}
 			fnvlist_add_uint64(bootenv, BOOTENV_VERSION, VB_RAW);
 			vbe->vbe_bootenv[sizeof (vbe->vbe_bootenv) - 1] = '\0';
 			fnvlist_add_string(bootenv, GRUB_ENVMAP,

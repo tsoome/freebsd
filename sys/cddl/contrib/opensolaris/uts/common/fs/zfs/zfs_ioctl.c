@@ -3662,6 +3662,9 @@ zfs_ioc_log_history(const char *unused, nvlist_t *innvl, nvlist_t *outnvl)
  * specific data.
  * The data is stored as nvlist data stream, and is protected by
  * an embedded checksum.
+ * The version can have two possible values:
+ * VB_RAW: nvlist should have key GRUB_ENVMAP, value DATA_TYPE_STRING.
+ * VB_NVLIST: nvlist with arbitrary <key, value> pairs.
  */
 /* ARGSUSED */
 static const zfs_ioc_key_t zfs_keys_set_bootenv[] = {
