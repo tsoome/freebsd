@@ -263,7 +263,7 @@ main(int argc, char * const *argv)
 		if (delete)
 			rv = delete_pair(name, nvlist, key);
 		else if (key == NULL || strcmp(key, "command") == 0)
-			rv = lzbe_set_boot_device(name, value);
+			rv = lzbe_set_boot_device(name, lzbe_add, value);
 		else
 			rv = add_pair(name, nvlist, key, type, value);
 

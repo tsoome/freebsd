@@ -22,10 +22,10 @@
 /*
  * Store device name to zpool label bootenv area.
  * This call will set bootenv version to VB_NVLIST, if bootenv currently
- * does contain other version, then old data will be lost.
+ * does contain other version, then old data will be replaced.
  */
 int
-lzbe_set_boot_device(const char *pool, const char *device)
+lzbe_set_boot_device(const char *pool, lzbe_flags_t flag, const char *device)
 {
 	libzfs_handle_t *hdl;
 	zpool_handle_t *zphdl;
@@ -46,22 +46,28 @@ lzbe_set_boot_device(const char *pool, const char *device)
 		return (rv);
 	}
 
-	rv = zpool_get_bootenv(zphdl, &nv);
-	if (rv == 0) {
-		/*
-		 * We got the nvlist, check for version.
-		 * if version is missing or is not VB_NVLIST, create new list.
-		 */
-		rv = nvlist_lookup_uint64(nv, BOOTENV_VERSION, &version);
-		if (rv == 0 && version != VB_NVLIST)
-			rv = EINVAL;
+	switch (flag) {
+	case lzbe_add:
+		rv = zpool_get_bootenv(zphdl, &nv);
+		if (rv == 0) {
+			/*
+			 * We got the nvlist, check for version.
+			 * if version is missing or is not VB_NVLIST, create new list.
+			 */
+			rv = nvlist_lookup_uint64(nv, BOOTENV_VERSION, &version);
+			if (rv == 0 && version == VB_NVLIST)
+				break;
 
-		if (rv != 0)
+			/* Drop this nvlist */
 			fnvlist_free(nv);
-	}
-
-	if (rv != 0)
+		}
+		/* FALLTHROUGH */
+	case lzbe_replace:
 		nv = fnvlist_alloc();
+		break;
+	default:
+		return (rv);
+	}
 
 	/* version is mandatory */
 	fnvlist_add_uint64(nv, BOOTENV_VERSION, VB_NVLIST);

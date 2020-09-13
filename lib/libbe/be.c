@@ -1231,7 +1231,7 @@ be_deactivate(libbe_handle_t *lbh, const char *ds, bool temporary)
 
 	if (temporary) {
 		return (lzbe_set_boot_device(
-		    zpool_get_name(lbh->active_phandle), NULL));
+		    zpool_get_name(lbh->active_phandle), lzbe_add, NULL));
 	}
 
 	if ((zfs = zfs_open(lbh->lzh, ds, ZFS_TYPE_DATASET)) == NULL)
@@ -1259,7 +1259,7 @@ be_activate(libbe_handle_t *lbh, const char *bootenv, bool temporary)
 
 	if (temporary) {
 		return (lzbe_set_boot_device(
-		    zpool_get_name(lbh->active_phandle), be_path));
+		    zpool_get_name(lbh->active_phandle), lzbe_add, be_path));
 	} else {
 		if (be_deactivate(lbh, lbh->bootfs, false) != 0)
 			return (-1);
