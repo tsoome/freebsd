@@ -1012,7 +1012,7 @@ get_value_size(data_type_t type, const void *data, uint32_t nelem)
 		break;
 	case DATA_TYPE_NVLIST_ARRAY:
 		value_sz = (uint64_t)nelem * sizeof (uint64_t) +
-		(uint64_t)nelem * NV_ALIGN(6 * 4); /* sizeof nvlist_t */
+		    (uint64_t)nelem * NV_ALIGN(6 * 4); /* sizeof nvlist_t */
 		break;
 	default:
 		return (-1);
