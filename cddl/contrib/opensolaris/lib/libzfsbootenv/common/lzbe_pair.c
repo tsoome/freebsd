@@ -16,6 +16,8 @@
 #include <string.h>
 #include <libzfs.h>
 #include <libzfsbootenv.h>
+#include <sys/zfs_bootenv.h>
+#include <sys/vdev_impl.h>
 
 #ifndef ARRAY_SIZE
 #define	ARRAY_SIZE(x)	nitems(x)
@@ -109,7 +111,7 @@ lzbe_nvlist_set(const char *pool, const char *key, void *ptr)
 				fnvlist_free(nv);
 				/* Create and prepare new nvlist */
 				nv = fnvlist_alloc();
-				fnvlist_add_uint64(nv, BOOTENV_VERSION, 
+				fnvlist_add_uint64(nv, BOOTENV_VERSION,
 				    VB_NVLIST);
 			}
 			rv = nvlist_add_nvlist(nv, key, ptr);
